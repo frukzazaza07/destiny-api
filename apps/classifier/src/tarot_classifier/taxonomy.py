@@ -1,0 +1,48 @@
+"""Fixed classifier taxonomy shared with the ASP.NET application."""
+
+from __future__ import annotations
+
+MODEL_VERSION = "tfidf-logreg-seed-v1"
+SOURCE = "PYTHON_GRPC"
+PERSONAL_CUSTOM = "PERSONAL_CUSTOM"
+
+INTENT_TO_DOMAIN: dict[str, str] = {
+    "GENERAL_DAILY": "GENERAL",
+    "GENERAL_DECISION": "GENERAL",
+    "GENERAL_DIRECTION": "GENERAL",
+    "LOVE_GENERAL": "LOVE",
+    "LOVE_SINGLE": "LOVE",
+    "LOVE_RELATIONSHIP": "LOVE",
+    "LOVE_BREAKUP": "LOVE",
+    "LOVE_RECONCILIATION": "LOVE",
+    "LOVE_NEW_PERSON": "LOVE",
+    "LOVE_COMMITMENT": "LOVE",
+    "LOVE_DECISION": "LOVE",
+    "CAREER_GENERAL": "CAREER",
+    "CAREER_NEW_JOB": "CAREER",
+    "CAREER_CHANGE_JOB": "CAREER",
+    "CAREER_PROMOTION": "CAREER",
+    "CAREER_BUSINESS": "CAREER",
+    "CAREER_DECISION": "CAREER",
+    "CAREER_CONFLICT": "CAREER",
+    "MONEY_GENERAL": "MONEY",
+    "MONEY_INCOME": "MONEY",
+    "MONEY_INVESTMENT": "MONEY",
+    "MONEY_BUSINESS": "MONEY",
+    "MONEY_DEBT": "MONEY",
+    "MONEY_PURCHASE": "MONEY",
+    "MONEY_DECISION": "MONEY",
+    "FAMILY_GENERAL": "FAMILY",
+    "FAMILY_CONFLICT": "FAMILY",
+    "PERSONAL_GROWTH_GENERAL": "PERSONAL_GROWTH",
+    "PERSONAL_GROWTH_HEALING": "PERSONAL_GROWTH",
+}
+
+ALL_INTENTS = frozenset((*INTENT_TO_DOMAIN, PERSONAL_CUSTOM))
+ALL_DOMAINS = frozenset(INTENT_TO_DOMAIN.values())
+
+
+def domain_for_intent(intent: str) -> str:
+    """Return the fixed domain for a learned intent."""
+
+    return INTENT_TO_DOMAIN[intent]

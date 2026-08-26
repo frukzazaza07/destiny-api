@@ -1,0 +1,6 @@
+grpcio==1.83.0
+grpcio-tools==1.83.0
+grpcio-health-checking==1.83.0
+protobuf==7.35.1
+scikit-learn==1.9.0
+joblib==1.5.2

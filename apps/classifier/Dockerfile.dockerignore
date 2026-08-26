@@ -1,0 +1,15 @@
+*
+!apps/
+!apps/classifier/
+!apps/classifier/**
+!contracts/
+!contracts/classifier/
+!contracts/classifier/v1/
+!contracts/classifier/v1/classifier.proto
+
+apps/classifier/.venv/
+apps/classifier/**/__pycache__/
+apps/classifier/**/*.py[cod]
+apps/classifier/artifacts/*.joblib
+apps/classifier/src/classifier/v1/*_pb2.py
+apps/classifier/src/classifier/v1/*_pb2_grpc.py

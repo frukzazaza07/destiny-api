@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.py[cod]
+.coverage
+artifacts/*.joblib
+src/classifier/v1/*_pb2.py
+src/classifier/v1/*_pb2_grpc.py

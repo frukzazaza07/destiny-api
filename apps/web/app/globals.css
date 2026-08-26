@@ -1,0 +1,385 @@
+:root {
+  color-scheme: dark;
+  --bg: #101114;
+  --panel: #191a1f;
+  --panel-2: #23242a;
+  --line: #343742;
+  --text: #f4efe7;
+  --muted: #b9b4aa;
+  --gold: #d5ad61;
+  --rose: #b85d74;
+  --teal: #4b9a96;
+  --ink: #14151a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(184, 93, 116, 0.18), transparent 28rem),
+    linear-gradient(135deg, #101114 0%, #191a1f 44%, #151719 100%);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.control-panel {
+  min-height: calc(100vh - 48px);
+  padding: 24px;
+  background: rgba(25, 26, 31, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--gold);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 2rem;
+  line-height: 1.08;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.segments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.segments button,
+.primary,
+.secondary,
+select,
+textarea {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.segments button,
+.secondary {
+  min-height: 42px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 8px 10px;
+  line-height: 1.25;
+}
+
+.segments button.active {
+  border-color: var(--gold);
+  background: #2e281d;
+}
+
+.reading-mode button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 48px;
+  text-align: left;
+}
+
+.reading-mode button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reading-mode button small {
+  margin-left: auto;
+  color: var(--gold);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reading-mode .premium-mode.active {
+  border-color: var(--teal);
+  background: #1d302f;
+}
+
+select,
+textarea {
+  width: 100%;
+  background: #111217;
+  color: var(--text);
+  padding: 12px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+textarea::placeholder {
+  color: #85878f;
+}
+
+.primary,
+.secondary {
+  min-height: 46px;
+}
+
+.primary {
+  border: 0;
+  color: #17120a;
+  background: var(--gold);
+  font-weight: 700;
+}
+
+.error {
+  color: #ffb3b3;
+  background: rgba(184, 93, 116, 0.16);
+  border: 1px solid rgba(184, 93, 116, 0.45);
+  padding: 12px;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.deck-area {
+  min-height: calc(100vh - 48px);
+  padding: 24px;
+}
+
+.deck-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.status {
+  border: 1px solid var(--teal);
+  color: #bde8e5;
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 10px;
+}
+
+.card-back {
+  aspect-ratio: 2 / 3;
+  min-height: 82px;
+  border: 1px solid #40392c;
+  border-radius: 8px;
+  color: var(--gold);
+  background:
+    linear-gradient(rgba(17, 18, 23, 0.12), rgba(17, 18, 23, 0.42)),
+    url("/images/tarot-card-back.webp") center / cover;
+  display: grid;
+  place-items: center;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.card-back:hover:not(:disabled),
+.card-back.selected {
+  transform: translateY(-4px);
+  border-color: var(--gold);
+  background:
+    linear-gradient(rgba(184, 93, 116, 0.1), rgba(75, 154, 150, 0.24)),
+    url("/images/tarot-card-back.webp") center / cover;
+}
+
+.card-back span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(213, 173, 97, 0.55);
+  border-radius: 50%;
+  background: rgba(17, 18, 23, 0.84);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  font-size: 0.78rem;
+}
+
+.reading {
+  display: grid;
+  gap: 18px;
+}
+
+.summary,
+.closing,
+blockquote {
+  max-width: 860px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.theme {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.theme span {
+  color: var(--gold);
+}
+
+.revealed-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.reading-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  padding: 14px;
+  background: rgba(35, 36, 42, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.face {
+  min-height: 144px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #f4efe7, #d5ad61);
+  color: var(--ink);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.face span,
+.face small {
+  font-size: 0.72rem;
+}
+
+.face strong {
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.reading-card p,
+.insight p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.insight {
+  border-top: 2px solid var(--teal);
+  background: rgba(17, 18, 23, 0.55);
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.insight h3 {
+  font-size: 1rem;
+}
+
+blockquote {
+  margin: 0;
+  padding: 18px;
+  border-left: 4px solid var(--rose);
+  background: rgba(184, 93, 116, 0.12);
+  border-radius: 8px;
+}
+
+.debug {
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b0c10;
+  color: #c7f1ee;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .control-panel,
+  .deck-area {
+    min-height: auto;
+  }
+
+  .deck-area {
+    padding: 12px 0;
+  }
+
+  .reading-card {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+}

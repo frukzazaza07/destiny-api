@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package tarotdestiny.classifier.v1;
+
+option csharp_namespace = "TarotDestiny.Classifier.V1";
+
+service ClassifierService {
+  rpc Classify(ClassifyRequest) returns (ClassifyResponse);
+}
+
+message ClassifyRequest {
+  string question = 1;
+  string locale = 2;
+}
+
+message ClassifyResponse {
+  string domain = 1;
+  string intent = 2;
+  double confidence = 3;
+  string personalization = 4;
+  string source = 5;
+  string model_version = 6;
+}
