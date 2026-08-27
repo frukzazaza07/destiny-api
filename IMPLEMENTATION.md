@@ -36,7 +36,7 @@ Compose builds the Next.js standalone image, ASP.NET API, and classifier; starts
 - Swagger UI (Development only): `http://localhost:5000/swagger`
 - OpenAPI JSON (Development only): `http://localhost:5000/swagger/v1/swagger.json`
 
-Only the loopback-bound web and API development ports are published. PostgreSQL, Redis, classifier gRPC, and inference endpoints remain on Docker networks. Named volumes retain database data, Redis data, classifier artifacts, and downloaded Ollama models.
+Only the web and API development ports are published. They bind to `BIND_ADDRESS` (`0.0.0.0` by default for LAN development); restrict this to `127.0.0.1` when LAN access is not required. PostgreSQL, Redis, classifier gRPC, and inference endpoints remain on Docker networks. Named volumes retain database data, Redis data, classifier artifacts, and downloaded Ollama models.
 
 Start local Ollama with NVIDIA GPU access and pull the models listed in `OLLAMA_MODELS`:
 

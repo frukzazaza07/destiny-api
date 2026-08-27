@@ -8,9 +8,9 @@ x-api-environment: &api-environment
   Classifier__UseGrpc: "true"
   Classifier__GrpcAddress: http://classifier:50051
   Admin__Key: ${ADMIN_KEY:-tarot-development-admin}
-  Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+  Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.95:3000}
   DeepReading__AllowUnentitledInDevelopment: "true"
-  LLM__Endpoint: ${TAROT_LLM_CORE_ENDPOINT:-http://ollama:11434/v1/chat/completions}
+  LLM__Endpoint: ${TAROT_LLM_CORE_ENDPOINT:-http://host.docker.internal:11434/v1/chat/completions}
   LLM__DefaultTier: CORE
   LLM__EnableCloudFallback: ${ENABLE_CLOUD_FALLBACK:-false}
   LLM__AllowCloudForRequestsWithRawQuestion: ${ALLOW_CLOUD_RAW_QUESTION:-false}
@@ -18,7 +18,7 @@ x-api-environment: &api-environment
   LLM__Tiers__0__Model: ${OLLAMA_MODEL:-qwen3:8b}
   LLM__Tiers__0__CacheModelVersion: ${OLLAMA_MODEL:-qwen3:8b}-core-v1
   LLM__Tiers__0__Workers__0__Id: core-gpu-1
-  LLM__Tiers__0__Workers__0__Endpoint: ${TAROT_LLM_CORE_ENDPOINT:-http://ollama:11434/v1/chat/completions}
+  LLM__Tiers__0__Workers__0__Endpoint: ${TAROT_LLM_CORE_ENDPOINT:-http://host.docker.internal:11434/v1/chat/completions}
   LLM__Tiers__0__Workers__0__Model: ${OLLAMA_MODEL:-qwen3:8b}
   LLM__Tiers__0__Workers__0__Provider: LOCAL_GPU
   LLM__Tiers__0__Workers__0__Priority: "0"
@@ -28,7 +28,7 @@ x-api-environment: &api-environment
   LLM__Tiers__1__Model: qwen3:14b
   LLM__Tiers__1__CacheModelVersion: qwen3:14b-advanced-v1
   LLM__Tiers__1__Workers__0__Id: advanced-gpu-1
-  LLM__Tiers__1__Workers__0__Endpoint: ${TAROT_LLM_ADVANCED_ENDPOINT:-http://ollama:11434/v1/chat/completions}
+  LLM__Tiers__1__Workers__0__Endpoint: ${TAROT_LLM_ADVANCED_ENDPOINT:-http://host.docker.internal:11434/v1/chat/completions}
   LLM__Tiers__1__Workers__0__Model: qwen3:14b
   LLM__Tiers__1__Workers__0__Provider: LOCAL_GPU
   LLM__Tiers__1__Workers__0__Priority: "0"
@@ -38,7 +38,7 @@ x-api-environment: &api-environment
   LLM__Tiers__2__Model: qwen3:32b
   LLM__Tiers__2__CacheModelVersion: qwen3:32b-premium-v1
   LLM__Tiers__2__Workers__0__Id: premium-gpu-1
-  LLM__Tiers__2__Workers__0__Endpoint: ${TAROT_LLM_PREMIUM_ENDPOINT:-http://ollama:11434/v1/chat/completions}
+  LLM__Tiers__2__Workers__0__Endpoint: ${TAROT_LLM_PREMIUM_ENDPOINT:-http://host.docker.internal:11434/v1/chat/completions}
   LLM__Tiers__2__Workers__0__Model: qwen3:32b
   LLM__Tiers__2__Workers__0__Provider: LOCAL_GPU
   LLM__Tiers__2__Workers__0__Priority: "0"
@@ -65,7 +65,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -74,13 +74,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    command: [ "redis-server", "--appendonly", "yes", "--save", "60", "1" ]
     volumes:
       - redis-data:/data
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -98,7 +98,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "python", "scripts/health_check.py"]
+      test: [ "CMD", "python", "scripts/health_check.py" ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -109,7 +109,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    command: ["--migrate"]
+    command: [ "--migrate" ]
     environment: *api-environment
     depends_on:
       postgres:
@@ -124,7 +124,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment: *api-environment
     ports:
-      - "127.0.0.1:${API_PORT:-5000}:5000"
+      - "${BIND_ADDRESS:-0.0.0.0}:${API_PORT:-5000}:5000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -138,7 +138,7 @@ services:
       - edge
       - backend
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:5000/health"]
+      test: [ "CMD", "curl", "--fail", "--silent", "http://127.0.0.1:5000/health" ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -155,14 +155,14 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: "3000"
     ports:
-      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_healthy
     networks:
       - edge
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --output-document=- http://127.0.0.1:3000/ >/dev/null"]
+      test: [ "CMD-SHELL", "wget --quiet --output-document=- http://127.0.0.1:3000/ >/dev/null" ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -172,7 +172,7 @@ services:
 
   ollama:
     image: ollama/ollama:0.11.4
-    profiles: ["local-gpu"]
+    profiles: [ "local-gpu" ]
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
     volumes:
@@ -181,7 +181,7 @@ services:
       - backend
       - egress
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: [ "CMD", "ollama", "list" ]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -193,8 +193,8 @@ services:
 
   ollama-model-init:
     image: ollama/ollama:0.11.4
-    profiles: ["local-gpu"]
-    entrypoint: ["/bin/sh", "-c"]
+    profiles: [ "local-gpu" ]
+    entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
         for model in ${OLLAMA_MODELS:-qwen3:8b}; do
@@ -211,8 +211,8 @@ services:
 
   inference-external-check:
     image: curlimages/curl:8.12.1
-    profiles: ["external-gpu"]
-    entrypoint: ["/bin/sh", "-c"]
+    profiles: [ "external-gpu" ]
+    entrypoint: [ "/bin/sh", "-c" ]
     command:
       - curl --fail --silent --show-error "${TAROT_EXTERNAL_LLM_HEALTH_URL:-http://host.docker.internal:11434/api/tags}" >/dev/null
     extra_hosts:
