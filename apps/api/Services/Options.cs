@@ -20,7 +20,7 @@ public sealed class TarotCacheOptions
 public sealed class LlmOptions
 {
     public string? Endpoint { get; set; }
-    public string Model { get; set; } = "qwen3:4b";
+    public string Model { get; set; } = "qwen3:8b";
     public int MaxConcurrency { get; set; } = 4;
     public int TimeoutSeconds { get; set; } = 90;
     public int MaxOutputTokens { get; set; } = 1000;

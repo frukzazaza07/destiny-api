@@ -82,6 +82,7 @@ public sealed class RuleInterpretationEngine(ITarotCatalog catalog) : IInterpret
         {
             OverallNarrative = overallNarrative,
             Guidance = guidance,
+            // ReflectionQuestion = request.Question ?? ReflectionQuestion(classification.Domain, thai),
             ReflectionQuestion = ReflectionQuestion(classification.Domain, thai),
             DominantElement = LocalizedElement(dominantElement, thai),
             ReversedCount = reversedCount,

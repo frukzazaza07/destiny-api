@@ -68,7 +68,7 @@ public sealed class ReadingResponseValidatorTests
         var response = TestSupport.ValidResponse(request, TestSupport.CareerChangeClassification()) with
         {
             GenerationSource = GenerationSource.LLM,
-            GenerationModel = "qwen3:4b"
+            GenerationModel = "qwen3:8b"
         };
 
         Assert.ThrowsExactly<InvalidOperationException>(() =>

@@ -356,7 +356,7 @@ STANDARD
 
 DEEP
 → Require backend-verified premium entitlement
-→ Call private Ollama qwen3:4b only on an eligible cache miss
+→ Call private Ollama qwen3:8b only on an eligible cache miss
 ```
 
 The request field defaults to `STANDARD` for backward compatibility:
@@ -1177,7 +1177,7 @@ Example:
   "LLM": {
     "MaxConcurrency": 4,
     "TimeoutSeconds": 90,
-    "MaxOutputTokens": 1000
+    "MaxOutputTokens": 5000
   }
 }
 ```
@@ -1293,7 +1293,7 @@ Implement first:
 - [x] Keep STANDARD generation rule-based with zero LLM calls
 - [x] Require backend premium entitlement for DEEP in production
 - [x] Add development-only entitlement bypass
-- [x] Integrate private Ollama `qwen3:4b` for DEEP generation
+- [x] Integrate private Ollama `qwen3:8b` for DEEP generation
 - [x] Include reading mode in every finished-answer cache key
 - [x] Include model version in DEEP cache identity
 - [x] Validate structured output, card identity/order, and Thai output language
@@ -1339,7 +1339,7 @@ Implement first:
 - [ ] Add embedding model
 - [ ] Detect similar question intent automatically
 - [ ] Cache base interpretation separately from final prose
-- [ ] Add additional premium model tiers beyond `qwen3:4b`
+- [ ] Add additional premium model tiers beyond `qwen3:8b`
 - [ ] Add offline cache warming
 - [ ] Add multi-GPU workers
 - [ ] Add GPU failover

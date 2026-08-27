@@ -5,7 +5,7 @@ Phase 1 MVP and optional Premium Deep readings are implemented. The runtime foll
 ```text
 Rule engine decides what the cards mean.
 STANDARD uses the rule engine for the finished reading.
-DEEP lets qwen3:4b express a premium reading from the same authoritative rules.
+DEEP lets qwen3:8b express a premium reading from the same authoritative rules.
 ```
 
 The shared finished-answer cache is safe at the intent boundary: cache-eligible generation receives reusable domain/intent and rule context, not the raw user question. Highly personalized or low-confidence questions skip shared cache and retain their full question for generation.
@@ -56,7 +56,7 @@ Question or topic
   -> shared-cache eligibility
   -> SHA-256 key from mode + intent + spread + locale + ordered cards + versions
   -> Redis HIT: return finished structured answer; avoid Ollama for DEEP
-  -> Redis MISS: render STANDARD or call qwen3:4b for DEEP, validate, cache, return
+  -> Redis MISS: render STANDARD or call qwen3:8b for DEEP, validate, cache, return
 ```
 
 Raw free-text is removed before a shared-cache LLM call. The backend also owns card identity, name, order, and orientation in the final response; generated prose cannot replace those values.
@@ -110,11 +110,11 @@ All 78 cards have explicit English and Thai names, upright meanings, reversed me
 
 ## LLM Configuration
 
-Development is configured for the local OpenAI-compatible Ollama endpoint and `qwen3:4b`:
+Development is configured for the local OpenAI-compatible Ollama endpoint and `qwen3:8b`:
 
 ```powershell
 $env:LLM__Endpoint = "http://127.0.0.1:11434/v1/chat/completions"
-$env:LLM__Model = "qwen3:4b"
+$env:LLM__Model = "qwen3:8b"
 ```
 
 Only `DEEP` calls this endpoint. `STANDARD` always uses the deterministic bilingual rule renderer. A Deep request fails with a controlled backend error when the endpoint is not configured; it is not silently downgraded after payment.

@@ -166,12 +166,25 @@ public sealed class LlmClient(
                 new
                 {
                     role = "system",
+                    // content = $$"""
+                    //     You write a detailed, reflective premium Tarot reading in {{LocaleName(payload.Locale)}}.
+                    //     {{LanguageInstruction(payload.Locale)}}
+                    //     The rule payload is authoritative. Do not change card ids, positions, or order.
+                    //     Return one JSON object only, without Markdown or code fences, matching the supplied response schema.
+                    //     Include exactly one cards item for every payload card in the same order. Use two or three concise sentences per card. Connect the cards into a coherent narrative, give practical reflection, and avoid guaranteed predictions.
+                    //     """
                     content = $$"""
                         You write a detailed, reflective premium Tarot reading in {{LocaleName(payload.Locale)}}.
                         {{LanguageInstruction(payload.Locale)}}
                         The rule payload is authoritative. Do not change card ids, positions, or order.
                         Return one JSON object only, without Markdown or code fences, matching the supplied response schema.
                         Include exactly one cards item for every payload card in the same order. Use two or three concise sentences per card. Connect the cards into a coherent narrative, give practical reflection, and avoid guaranteed predictions.
+
+                        For "reflectionQuestion": write ONE new, original question that invites the user to reflect on their own feelings or actions, based on the cards and their situation. Never copy, paraphrase, or restate the user's original question in this field.
+
+                        For "title", "summary", "mainTheme", "closingMessage": synthesize your own original text based on the cards and the user's question context. Do not copy the user's question verbatim anywhere in the response.
+
+                        For "opportunities", "challenges", "guidance": give 2-3 concrete, actionable items each, grounded in the specific cards drawn.
                         """
                 },
                 new

@@ -362,7 +362,7 @@ STANDARD
 
 DEEP
 → Premium option
-→ Rule interpretation + private qwen3:4b synthesis through Ollama
+→ Rule interpretation + private qwen3:8b synthesis through Ollama
 → Requires a backend-verified entitlement
 ```
 
