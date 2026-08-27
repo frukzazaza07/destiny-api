@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using TarotDestiny.Api.Data;
 using TarotDestiny.Api.Domain;
 using TarotDestiny.Api.DTOs;
 using TarotDestiny.Api.Middlewares;
@@ -86,6 +89,18 @@ builder.Services.AddOptions<DeepReadingOptions>()
          !string.IsNullOrWhiteSpace(options.ClaimValue)),
         "Deep reading entitlement claim type and value are required when enabled.")
     .ValidateOnStart();
+builder.Services.AddOptions<BaseInterpretationCacheOptions>()
+    .Bind(builder.Configuration.GetSection("BaseInterpretationCache"))
+    .Validate(options => options.MaximumEntries > 0 && options.TtlMinutes > 0,
+        "Base interpretation cache limits must be positive.")
+    .ValidateOnStart();
+builder.Services.AddOptions<ClassifierTrainingOptions>()
+    .Bind(builder.Configuration.GetSection("ClassifierTraining"))
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ConsentVersion),
+        "Classifier training consent version is required when collection is enabled.")
+    .ValidateOnStart();
+builder.Services.AddOptions<AdminOptions>()
+    .Bind(builder.Configuration.GetSection("Admin"));
 
 builder.Services.AddCors(options =>
 {
@@ -127,12 +142,14 @@ builder.Services.AddGrpcClient<TarotDestiny.Classifier.V1.ClassifierService.Clas
 builder.Services.AddSingleton<RuleQuestionClassifier>();
 builder.Services.AddSingleton<IRemoteQuestionClassifier, GrpcQuestionClassifier>();
 builder.Services.AddSingleton<IQuestionClassifier, ResilientQuestionClassifier>();
+builder.Services.AddSingleton<IInferenceRouter, InferenceRouter>();
 builder.Services.AddSingleton<ICacheKeyBuilder, CacheKeyBuilder>();
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
     ?? builder.Configuration["Redis:ConnectionString"];
 if (string.IsNullOrWhiteSpace(redisConnectionString))
 {
     builder.Services.AddSingleton<IAnswerCache, InMemoryAnswerCache>();
+    builder.Services.AddSingleton<ICacheLock, InMemoryCacheLock>();
 }
 else
 {
@@ -144,18 +161,56 @@ else
         return ConnectionMultiplexer.Connect(redisOptions);
     });
     builder.Services.AddSingleton<IAnswerCache, RedisAnswerCache>();
+    builder.Services.AddSingleton<ICacheLock, RedisCacheLock>();
 }
+var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
+    ?? builder.Configuration["Postgres:ConnectionString"];
+if (string.IsNullOrWhiteSpace(postgresConnectionString))
+{
+    builder.Services.AddSingleton<IGeneratedAnswerStore, NullGeneratedAnswerStore>();
+    builder.Services.AddSingleton<IClassifierTrainingStore, UnavailableClassifierTrainingStore>();
+}
+else
+{
+    builder.Services.AddDbContext<TarotDbContext>(options =>
+        options.UseNpgsql(postgresConnectionString));
+    builder.Services.AddScoped<IGeneratedAnswerStore, PostgresGeneratedAnswerStore>();
+    builder.Services.AddScoped<IClassifierTrainingStore, ClassifierTrainingStore>();
+}
+builder.Services.AddSingleton<IAdminAccessPolicy, AdminAccessPolicy>();
 builder.Services.AddSingleton<ITarotCatalog, TarotCatalog>();
-builder.Services.AddSingleton<IInterpretationEngine, RuleInterpretationEngine>();
+builder.Services.AddSingleton<RuleInterpretationEngine>();
+builder.Services.AddSingleton<IInterpretationEngine>(services =>
+    new CachingInterpretationEngine(
+        services.GetRequiredService<RuleInterpretationEngine>(),
+        services.GetRequiredService<IOptions<BaseInterpretationCacheOptions>>(),
+        services.GetRequiredService<IOptions<TarotCacheOptions>>()));
 builder.Services.AddSingleton<IRuleReadingRenderer, RuleReadingRenderer>();
+builder.Services.AddSingleton<IAnswerVariantSelector, RandomAnswerVariantSelector>();
 builder.Services.AddSingleton<IDeckService, DeckService>();
 builder.Services.AddSingleton<ILlmGate, LlmGate>();
 builder.Services.AddSingleton<IDeepReadingAccessPolicy, DeepReadingAccessPolicy>();
 builder.Services.AddSingleton<IReadingResponseValidator, ReadingResponseValidator>();
 builder.Services.AddSingleton<TarotMetrics>();
+builder.Services.AddSingleton<CacheWarmupService>();
+builder.Services.AddSingleton<ICacheWarmupService>(services => services.GetRequiredService<CacheWarmupService>());
+builder.Services.AddHostedService(services => services.GetRequiredService<CacheWarmupService>());
 builder.Services.AddScoped<ITarotReadingService, TarotReadingService>();
 
 var app = builder.Build();
+
+if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
+{
+    if (string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        throw new InvalidOperationException("PostgreSQL must be configured to run database migrations.");
+    }
+
+    await using var migrationScope = app.Services.CreateAsyncScope();
+    var database = migrationScope.ServiceProvider.GetRequiredService<TarotDbContext>();
+    await database.Database.MigrateAsync();
+    return;
+}
 
 if (app.Environment.IsDevelopment())
 {

@@ -14,7 +14,7 @@ public sealed class RedisAnswerCache(
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public async Task<TarotReadingResponse?> GetAsync(string key, CancellationToken cancellationToken)
+    public async Task<CachedAnswerSet?> GetAsync(string key, CancellationToken cancellationToken)
     {
         try
         {
@@ -24,7 +24,17 @@ public sealed class RedisAnswerCache(
                 return null;
             }
 
-            return JsonSerializer.Deserialize<TarotReadingResponse>(value!, JsonOptions);
+            var json = value.ToString();
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("variants", out _))
+            {
+                var answers = JsonSerializer.Deserialize<CachedAnswerSet>(json, JsonOptions);
+                return answers is { Variants.Count: > 0 } ? answers : null;
+            }
+
+            // Values written before variant support contain a response directly.
+            var legacy = JsonSerializer.Deserialize<TarotReadingResponse>(json, JsonOptions);
+            return legacy is null ? null : CachedAnswerSet.Single(legacy);
         }
         catch (Exception ex)
         {
@@ -33,11 +43,11 @@ public sealed class RedisAnswerCache(
         }
     }
 
-    public async Task SetAsync(string key, TarotReadingResponse response, TimeSpan ttl, CancellationToken cancellationToken)
+    public async Task SetAsync(string key, CachedAnswerSet answers, TimeSpan ttl, CancellationToken cancellationToken)
     {
         try
         {
-            var payload = JsonSerializer.Serialize(response, JsonOptions);
+            var payload = JsonSerializer.Serialize(answers, JsonOptions);
             await connection.GetDatabase().StringSetAsync(key, payload, ttl);
         }
         catch (Exception ex)

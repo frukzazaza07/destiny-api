@@ -1319,33 +1319,51 @@ Implement first:
 
 # MVP Phase 2
 
-- [ ] Persist generated answers in PostgreSQL
-- [ ] Redis MISS → check PostgreSQL
-- [ ] Repopulate Redis from PostgreSQL
-- [ ] Add hit_count
-- [ ] Add cache analytics dashboard
-- [ ] Add distributed lock to prevent cache stampede
-- [ ] Generate multiple answer variants per cache key
-- [ ] Pre-generate 1-card readings
-- [ ] Store classifier training examples
-- [ ] Add human review workflow for classifier labels
+- [x] Persist generated answers in PostgreSQL
+- [x] Redis MISS → check PostgreSQL
+- [x] Repopulate Redis from PostgreSQL
+- [x] Add hit_count
+- [x] Add cache analytics dashboard
+- [x] Add distributed lock to prevent cache stampede
+- [x] Generate multiple answer variants per cache key
+- [x] Pre-generate 1-card readings
+- [x] Store classifier training examples
+- [x] Add human review workflow for classifier labels
 
 ---
 
 # Future
 
-- [ ] Train custom classifier using real user questions
-- [ ] Support semantic similarity cache
-- [ ] Add embedding model
-- [ ] Detect similar question intent automatically
-- [ ] Cache base interpretation separately from final prose
-- [ ] Add additional premium model tiers beyond `qwen3:8b`
-- [ ] Add offline cache warming
-- [ ] Add multi-GPU workers
-- [ ] Add GPU failover
-- [ ] Add cloud-GPU fallback
-- [ ] Add automated prompt A/B testing
-- [ ] Add response-quality scoring
+- [x] Train custom classifier using real user questions
+- [x] Support semantic similarity cache
+- [x] Add embedding model
+- [x] Detect similar question intent automatically
+- [x] Cache base interpretation separately from final prose
+- [x] Add additional premium model tiers beyond `qwen3:8b`
+- [x] Add offline cache warming
+- [x] Add multi-GPU workers
+- [x] Add GPU failover
+- [x] Add cloud-GPU fallback
+- [x] Add automated prompt A/B testing
+- [x] Add response-quality scoring
+
+---
+
+# MVP Phase 3 — Infrastructure
+
+- [x] Run the complete platform through Docker Compose
+
+Acceptance scope:
+
+- Containerize the ASP.NET API and Next.js web application.
+- Include the web, API, classifier, PostgreSQL, Redis, and local inference services in `docker-compose.yml`.
+- Add a one-shot database migration service that completes before the API becomes ready.
+- Add health checks and health-based startup dependencies for every required service.
+- Use internal networks for PostgreSQL, Redis, classifier, and inference traffic; publish only user-facing development ports.
+- Persist PostgreSQL, Redis, classifier artifacts, and local model data in named volumes.
+- Move credentials and deployment-specific endpoints to environment variables or Docker secrets, with a checked-in example environment file containing no production secrets.
+- Support local-GPU and external-GPU profiles without exposing the inference endpoint publicly.
+- Verify a clean `docker compose up --build` starts the stack and passes web, API health, Swagger/OpenAPI, classifier health, database, Redis, cache, and reading smoke tests.
 
 ---
 

@@ -30,13 +30,17 @@ public sealed record TarotReadingDto : IValidatableObject
         string spread,
         string locale,
         IReadOnlyList<SelectedCard> cards,
-        ReadingMode readingMode = ReadingMode.STANDARD)
+        ReadingMode readingMode = ReadingMode.STANDARD,
+        string? modelTier = null,
+        int answerVariant = 1)
     {
         Question = question;
         Spread = spread;
         Locale = locale;
         Cards = cards;
         ReadingMode = readingMode;
+        ModelTier = modelTier;
+        AnswerVariant = answerVariant;
     }
 
     public string? Question { get; init; }
@@ -54,6 +58,12 @@ public sealed record TarotReadingDto : IValidatableObject
 
     [EnumDataType(typeof(ReadingMode))]
     public ReadingMode ReadingMode { get; init; }
+
+    [StringLength(50)]
+    public string? ModelTier { get; init; }
+
+    [Range(1, 10)]
+    public int AnswerVariant { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         RequestValidator.Validate(this)

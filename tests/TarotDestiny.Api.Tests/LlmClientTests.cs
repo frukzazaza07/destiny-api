@@ -50,6 +50,11 @@ public sealed class LlmClientTests
         Assert.AreEqual(ReadingMode.DEEP, response.ReadingMode);
         Assert.AreEqual(GenerationSource.LLM, response.GenerationSource);
         Assert.AreEqual("test-model", response.GenerationModel);
+        Assert.AreEqual("DEEP", response.ModelTier);
+        Assert.AreEqual("legacy", response.InferenceWorker);
+        Assert.AreEqual("LOCAL_GPU", response.InferenceProvider);
+        Assert.AreEqual("CONTROL", response.PromptVariant);
+        Assert.IsNotNull(response.QualityScore);
         StringAssert.Contains(requestBody!, "response_format");
         StringAssert.Contains(requestBody!, "json_schema");
         StringAssert.Contains(requestBody!, "reasoning_effort");
@@ -128,6 +133,63 @@ public sealed class LlmClientTests
             client.GenerateAsync(request, classification, payload, CancellationToken.None));
     }
 
+    [TestMethod]
+    public async Task FailsOverAcrossLocalGpuWorkersBeforeCloud()
+    {
+        var request = TestSupport.DestinyRequest(locale: "en", readingMode: ReadingMode.DEEP) with { Question = null };
+        var classification = TestSupport.CareerChangeClassification();
+        var payload = new RuleInterpretationEngine(new TarotCatalog()).Build(request, classification);
+        var called = new List<string>();
+        var content = ValidContent(request);
+        var handler = new StubHandler(message =>
+        {
+            called.Add(message.RequestUri!.Host);
+            return Task.FromResult(message.RequestUri.Host == "primary.test"
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : OpenAiResponse(content));
+        });
+        var client = NewRoutedClient(handler,
+        [
+            Worker("primary", "http://primary.test/v1", LlmWorkerProvider.LOCAL_GPU, 0),
+            Worker("secondary", "http://secondary.test/v1", LlmWorkerProvider.LOCAL_GPU, 1),
+            Worker("cloud", "http://cloud.test/v1", LlmWorkerProvider.CLOUD_GPU, 100)
+        ], enableCloud: true);
+
+        var response = await client.GenerateAsync(request, classification, payload, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "primary.test", "secondary.test" }, called);
+        Assert.AreEqual("secondary", response.InferenceWorker);
+        Assert.AreEqual("LOCAL_GPU", response.InferenceProvider);
+    }
+
+    [TestMethod]
+    public async Task UsesCloudGpuOnlyAsExplicitFallback()
+    {
+        var request = TestSupport.DestinyRequest(locale: "en", readingMode: ReadingMode.DEEP) with { Question = null };
+        var classification = TestSupport.CareerChangeClassification();
+        var payload = new RuleInterpretationEngine(new TarotCatalog()).Build(request, classification);
+        var called = new List<string>();
+        var content = ValidContent(request);
+        var handler = new StubHandler(message =>
+        {
+            called.Add(message.RequestUri!.Host);
+            return Task.FromResult(message.RequestUri.Host == "local.test"
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : OpenAiResponse(content));
+        });
+        var client = NewRoutedClient(handler,
+        [
+            Worker("local", "http://local.test/v1", LlmWorkerProvider.LOCAL_GPU, 0),
+            Worker("cloud", "http://cloud.test/v1", LlmWorkerProvider.CLOUD_GPU, 0)
+        ], enableCloud: true);
+
+        var response = await client.GenerateAsync(request, classification, payload, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "local.test", "cloud.test" }, called);
+        Assert.AreEqual("cloud", response.InferenceWorker);
+        Assert.AreEqual("CLOUD_GPU", response.InferenceProvider);
+    }
+
     private static LlmClient NewClient(HttpMessageHandler handler) =>
         new(
             new HttpClient(handler),
@@ -140,6 +202,65 @@ public sealed class LlmClientTests
             }),
             new TarotMetrics(),
             TestSupport.LoggerFactory.CreateLogger<LlmClient>());
+
+    private static LlmClient NewRoutedClient(
+        HttpMessageHandler handler,
+        List<LlmWorkerOptions> workers,
+        bool enableCloud) =>
+        new(
+            new HttpClient(handler),
+            Options.Create(new LlmOptions
+            {
+                RetryCount = 0,
+                TimeoutSeconds = 5,
+                EnableCloudFallback = enableCloud,
+                DefaultTier = "CORE",
+                Tiers =
+                [
+                    new LlmTierOptions
+                    {
+                        Id = "CORE",
+                        Model = "test-model",
+                        CacheModelVersion = "test-model-v1",
+                        Workers = workers
+                    }
+                ]
+            }),
+            new TarotMetrics(),
+            TestSupport.LoggerFactory.CreateLogger<LlmClient>());
+
+    private static LlmWorkerOptions Worker(
+        string id,
+        string endpoint,
+        LlmWorkerProvider provider,
+        int priority) => new()
+        {
+            Id = id,
+            Endpoint = endpoint,
+            Model = "test-model",
+            Provider = provider,
+            Priority = priority,
+            MaxConcurrency = 1
+        };
+
+    private static string ValidContent(TarotDestiny.Api.DTOs.TarotReadingDto request) =>
+        JsonSerializer.Serialize(new
+        {
+            title = "A grounded direction",
+            summary = "A sufficiently detailed reflective summary for this Tarot reading.",
+            mainTheme = "Practical change and thoughtful renewal",
+            cards = request.Cards.Select(card => new
+            {
+                position = card.Position,
+                cardId = card.CardId,
+                interpretation = $"A sufficiently detailed interpretation grounded in {card.CardId} for {card.Position}."
+            }),
+            opportunities = new[] { "Consider one concrete next step", "Notice useful support" },
+            challenges = new[] { "Avoid rushing the decision", "Name the uncertainty" },
+            guidance = new[] { "Write down practical options", "Review the tradeoffs" },
+            reflectionQuestion = "Which next step best respects your priorities?",
+            closingMessage = "Use the cards as a reflective guide while keeping your agency."
+        });
 
     private static HttpResponseMessage OpenAiResponse(string content)
     {

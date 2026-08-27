@@ -10,12 +10,27 @@ namespace TarotDestiny.Api.Services;
 public interface ICacheKeyBuilder
 {
     string BuildCanonical(TarotReadingDto request, ClassificationResult classification);
+    string BuildHash(TarotReadingDto request, ClassificationResult classification);
     string BuildRedisKey(TarotReadingDto request, ClassificationResult classification);
 }
 
-public sealed class CacheKeyBuilder(IOptions<TarotCacheOptions> options) : ICacheKeyBuilder
+public sealed class CacheKeyBuilder : ICacheKeyBuilder
 {
-    private readonly TarotCacheOptions _options = options.Value;
+    private readonly TarotCacheOptions _options;
+    private readonly IInferenceRouter? _inferenceRouter;
+
+    public CacheKeyBuilder(IOptions<TarotCacheOptions> options)
+        : this(options, null)
+    {
+    }
+
+    public CacheKeyBuilder(
+        IOptions<TarotCacheOptions> options,
+        IInferenceRouter? inferenceRouter)
+    {
+        _options = options.Value;
+        _inferenceRouter = inferenceRouter;
+    }
 
     public string BuildCanonical(TarotReadingDto request, ClassificationResult classification)
     {
@@ -36,7 +51,18 @@ public sealed class CacheKeyBuilder(IOptions<TarotCacheOptions> options) : ICach
         parts.Add(_options.InterpretationVersion);
 
         if (request.ReadingMode == ReadingMode.DEEP &&
-            !string.IsNullOrWhiteSpace(_options.ModelVersion))
+            _inferenceRouter is not null)
+        {
+            var plan = _inferenceRouter.Resolve(request, classification);
+            parts.Add(plan.TierId);
+            parts.Add(plan.CacheModelVersion);
+            if (plan.PromptVariant.CacheDiscriminator is not null)
+            {
+                parts.Add(plan.PromptVariant.CacheDiscriminator);
+            }
+        }
+        else if (request.ReadingMode == ReadingMode.DEEP &&
+                 !string.IsNullOrWhiteSpace(_options.ModelVersion))
         {
             parts.Add(_options.ModelVersion);
         }
@@ -44,10 +70,12 @@ public sealed class CacheKeyBuilder(IOptions<TarotCacheOptions> options) : ICach
         return string.Join("|", parts);
     }
 
-    public string BuildRedisKey(TarotReadingDto request, ClassificationResult classification)
+    public string BuildHash(TarotReadingDto request, ClassificationResult classification)
     {
         var canonical = BuildCanonical(request, classification);
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
-        return $"tarot:answer:{hash}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
     }
+
+    public string BuildRedisKey(TarotReadingDto request, ClassificationResult classification) =>
+        $"tarot:answer:{BuildHash(request, classification)}";
 }

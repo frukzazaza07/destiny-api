@@ -79,7 +79,20 @@ public sealed class RuleQuestionClassifier(IOptions<ClassifierOptions> options, 
         }
 
         var match = Regex.Match(question, @"^topic:\s*([a-z_]+)\b", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value.ToLowerInvariant() switch
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var topic = match.Groups[1].Value.ToUpperInvariant();
+        if (TarotIntents.All.Contains(topic, StringComparer.Ordinal) && topic != TarotIntents.PersonalCustom)
+        {
+            var domain = Enum.GetValues<TarotDomain>()
+                .Single(value => topic.StartsWith($"{value}_", StringComparison.Ordinal));
+            return new ClassificationResult(domain, topic, 0.99, PersonalizationLevel.LOW, ClassifierSources.CSharpTopic);
+        }
+
+        return topic.ToLowerInvariant() switch
         {
             "general" => new(TarotDomain.GENERAL, "GENERAL_DIRECTION", 0.98, PersonalizationLevel.LOW),
             "love" => new(TarotDomain.LOVE, "LOVE_GENERAL", 0.98, PersonalizationLevel.LOW),
@@ -88,7 +101,7 @@ public sealed class RuleQuestionClassifier(IOptions<ClassifierOptions> options, 
             "family" => new(TarotDomain.FAMILY, "FAMILY_GENERAL", 0.98, PersonalizationLevel.LOW),
             "personal_growth" => new(TarotDomain.PERSONAL_GROWTH, "PERSONAL_GROWTH_GENERAL", 0.98, PersonalizationLevel.LOW),
             _ => null
-        } : null;
+        };
     }
 
     public bool CanUseSharedCache(ClassificationResult classification) =>
@@ -205,12 +218,48 @@ public sealed class GrpcQuestionClassifier(
         {
             throw new InvalidOperationException("Classifier source and model version are required.");
         }
+
+        if (!ClassifierDecisionMethods.RemoteMethods.Contains(
+                response.DecisionMethod,
+                StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Classifier returned unknown decision method '{response.DecisionMethod}'.");
+        }
+
+        var semanticSimilarity = response.HasSemanticSimilarity
+            ? response.SemanticSimilarity
+            : (double?)null;
+        if (semanticSimilarity is not null &&
+            (!double.IsFinite(semanticSimilarity.Value) || semanticSimilarity is < 0 or > 1))
+        {
+            throw new InvalidOperationException(
+                "Classifier semantic similarity must be between 0 and 1.");
+        }
+
+        var hasEmbeddingVersion = !string.IsNullOrWhiteSpace(response.EmbeddingModelVersion);
+        if ((semanticSimilarity is null) == hasEmbeddingVersion)
+        {
+            throw new InvalidOperationException(
+                "Classifier semantic similarity and embedding model version must be returned together.");
+        }
+
+        if (response.DecisionMethod is ClassifierDecisionMethods.HybridAgreement
+                or ClassifierDecisionMethods.SemanticNeighbor
+                or ClassifierDecisionMethods.SemanticConflict &&
+            semanticSimilarity is null)
+        {
+            throw new InvalidOperationException(
+                "Classifier semantic decisions require similarity metadata.");
+        }
+
         logger.LogInformation(
-            "Python classifier returned {Domain}/{Intent} confidence {Confidence} model {ModelVersion}",
+            "Python classifier returned {Domain}/{Intent} confidence {Confidence} model {ModelVersion} via {DecisionMethod}",
             domain,
             response.Intent,
             response.Confidence,
-            response.ModelVersion);
+            response.ModelVersion,
+            response.DecisionMethod);
 
         return new ClassificationResult(
             domain,
@@ -218,7 +267,10 @@ public sealed class GrpcQuestionClassifier(
             response.Confidence,
             personalization,
             ClassifierSources.PythonGrpc,
-            response.ModelVersion);
+            response.ModelVersion,
+            response.DecisionMethod,
+            semanticSimilarity,
+            hasEmbeddingVersion ? response.EmbeddingModelVersion : null);
     }
 
     private static bool IntentMatchesDomain(string intent, TarotDomain domain)

@@ -30,9 +30,9 @@ public sealed class RedisAnswerCacheTests
         var result = await cache.GetAsync("tarot:answer:unavailable-test", CancellationToken.None);
         await cache.SetAsync(
             "tarot:answer:unavailable-test",
-            TestSupport.ValidResponse(
+            CachedAnswerSet.Single(TestSupport.ValidResponse(
                 TestSupport.DestinyRequest(),
-                TestSupport.CareerChangeClassification()),
+                TestSupport.CareerChangeClassification())),
             TimeSpan.FromMinutes(1),
             CancellationToken.None);
 

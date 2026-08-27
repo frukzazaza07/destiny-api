@@ -15,6 +15,7 @@ from classifier.v1 import classifier_pb2, classifier_pb2_grpc  # noqa: E402
 from tarot_classifier.model import ClassifierModel  # noqa: E402
 from tarot_classifier.server import SERVICE_NAME, create_server  # noqa: E402
 from tarot_classifier.taxonomy import MODEL_VERSION, SOURCE  # noqa: E402
+from tarot_classifier.model import DECISION_TFIDF_LOGREG  # noqa: E402
 
 
 class GrpcServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -46,6 +47,9 @@ class GrpcServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("LOW", response.personalization)
         self.assertEqual(SOURCE, response.source)
         self.assertEqual(MODEL_VERSION, response.model_version)
+        self.assertEqual(DECISION_TFIDF_LOGREG, response.decision_method)
+        self.assertFalse(response.HasField("semantic_similarity"))
+        self.assertEqual("", response.embedding_model_version)
 
     async def test_health_service_reports_serving(self) -> None:
         health_stub = health_pb2_grpc.HealthStub(self.channel)

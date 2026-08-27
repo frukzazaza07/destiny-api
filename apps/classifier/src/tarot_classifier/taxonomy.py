@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 MODEL_VERSION = "tfidf-logreg-seed-v1"
+REVIEWED_MODEL_PREFIX = "tfidf-logreg-reviewed-v1"
+ARTIFACT_SCHEMA_VERSION = 2
 SOURCE = "PYTHON_GRPC"
 PERSONAL_CUSTOM = "PERSONAL_CUSTOM"
 

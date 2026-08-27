@@ -7,7 +7,8 @@ const privateNetworkDevOrigins = [
 ];
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: privateNetworkDevOrigins
+  allowedDevOrigins: privateNetworkDevOrigins,
+  output: "standalone"
 };
 
 export default nextConfig;

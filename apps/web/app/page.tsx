@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Sparkles } from "lucide-react";
+import { BookOpen, Settings, Sparkles } from "lucide-react";
 
 type Locale = "en" | "th";
 type QuestionMode = "TOPIC" | "QUESTION";
@@ -45,6 +45,11 @@ type ReadingResponse = {
   readingMode: ReadingMode;
   generationSource: "RULE_ENGINE" | "LLM";
   generationModel: string | null;
+  modelTier: string | null;
+  inferenceWorker: string | null;
+  inferenceProvider: string | null;
+  promptVariant: string | null;
+  qualityScore: number | null;
 };
 
 type ReadingOptions = {
@@ -53,6 +58,7 @@ type ReadingOptions = {
     entitled: boolean;
     upgradeUrl: string | null;
   };
+  modelTiers: Array<{ id: string; model: string; available: boolean }>;
 };
 
 type UiCopy = {
@@ -210,6 +216,8 @@ export default function Home() {
   const [topic, setTopic] = useState<TopicId>("CAREER");
   const [question, setQuestion] = useState("");
   const [readingMode, setReadingMode] = useState<ReadingMode>("STANDARD");
+  const [modelTier, setModelTier] = useState("CORE");
+  const [modelTiers, setModelTiers] = useState<ReadingOptions["modelTiers"]>([]);
   const [deepAccess, setDeepAccess] = useState<ReadingOptions["deepReading"]>({
     enabled: false,
     entitled: false,
@@ -241,7 +249,12 @@ export default function Home() {
     fetch(apiUrl("/api/readings/options"))
       .then((response) => (response.ok ? readApiData<ReadingOptions>(response) : null))
       .then((options: ReadingOptions | null) => {
-        if (active && options?.deepReading) setDeepAccess(options.deepReading);
+        if (active && options?.deepReading) {
+          setDeepAccess(options.deepReading);
+          setModelTiers(options.modelTiers ?? []);
+          const firstAvailable = options.modelTiers?.find((tier) => tier.available);
+          if (firstAvailable) setModelTier(firstAvailable.id);
+        }
       })
       .catch(() => {
         // Standard readings remain available when capability discovery fails.
@@ -357,6 +370,7 @@ export default function Home() {
           spread: shuffle.spread,
           locale,
           readingMode,
+          modelTier: readingMode === "DEEP" ? modelTier : null,
           cards: resolvedBody.cards
         })
       });
@@ -377,7 +391,21 @@ export default function Home() {
           <div>
             <p className="eyebrow">Tarot Destiny</p>
             <h1>{text.headline}</h1>
+            <a className="admin-link" href="/admin"><Settings aria-hidden="true" size={14} /> Admin</a>
           </div>
+
+          {readingMode === "DEEP" && modelTiers.length > 0 && (
+            <div className="field">
+              <label htmlFor="model-tier">Model tier</label>
+              <select id="model-tier" value={modelTier} onChange={(event) => { setModelTier(event.target.value); resetReadingFlow(); }}>
+                {modelTiers.map((tier) => (
+                  <option key={tier.id} value={tier.id} disabled={!tier.available}>
+                    {formatEnumLabel(tier.id)} · {tier.model}{tier.available ? "" : " (offline)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="field">
             <label>{text.language}</label>
@@ -570,6 +598,11 @@ export default function Home() {
                       readingMode: reading.readingMode,
                       generationSource: reading.generationSource,
                       generationModel: reading.generationModel,
+                      modelTier: reading.modelTier,
+                      inferenceWorker: reading.inferenceWorker,
+                      inferenceProvider: reading.inferenceProvider,
+                      promptVariant: reading.promptVariant,
+                      qualityScore: reading.qualityScore,
                       questionMode,
                       topic: questionMode === "TOPIC" ? topic : null,
                       classification: reading.classification,

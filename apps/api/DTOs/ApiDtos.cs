@@ -7,7 +7,10 @@ public sealed record HealthStatusDto(string Status, string Service);
 
 public sealed record ReadingOptionsDto(
     IReadOnlyList<ReadingMode> Modes,
-    DeepReadingAccess DeepReading);
+    DeepReadingAccess DeepReading,
+    IReadOnlyList<ReadingModelTierDto> ModelTiers);
+
+public sealed record ReadingModelTierDto(string Id, string Model, bool Available);
 
 public sealed record ApiErrorDto(string Message, string? UpgradeUrl = null);
 

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Json;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -97,6 +99,11 @@ public sealed class LlmClient(
         Converters = { new JsonStringEnumConverter() }
     };
     private readonly LlmOptions _options = options.Value;
+    private readonly InferenceRouter _router = new(options);
+    private readonly ReadingQualityScorer _qualityScorer = new();
+    private readonly InferenceWorkerPool _workerPool = new(
+        options.Value.CircuitBreakerFailureThreshold,
+        TimeSpan.FromSeconds(options.Value.CircuitBreakerCooldownSeconds));
 
     public async Task<TarotReadingResponse> GenerateAsync(
         TarotReadingDto request,
@@ -105,60 +112,182 @@ public sealed class LlmClient(
         CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
-
-        if (string.IsNullOrWhiteSpace(_options.Endpoint))
+        var plan = _router.Resolve(request, classification);
+        if (plan.Workers.Count == 0)
         {
             metrics.RecordLlmLatency(sw.Elapsed);
             metrics.LlmFailed();
             throw new InvalidOperationException("Deep reading LLM endpoint is not configured.");
         }
 
-        for (var attempt = 0; attempt <= _options.RetryCount; attempt++)
+        var allowCloudForRequest = request.Question is null || _options.AllowCloudForRequestsWithRawQuestion;
+        var workers = _workerPool.OrderCandidates(
+            plan.TierId,
+            plan.Workers,
+            _options.EnableCloudFallback,
+            allowCloudForRequest);
+        if (workers.Count == 0)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds)));
-
-            try
-            {
-                var llmRequest = BuildOpenAiCompatibleRequest(request, classification, payload);
-                var response = await httpClient.PostAsJsonAsync(_options.Endpoint, llmRequest, JsonOptions, timeoutCts.Token);
-                response.EnsureSuccessStatusCode();
-                var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                var parsed = ParseOpenAiCompatibleResponse(body, classification, payload, _options.Model);
-                metrics.RecordLlmLatency(sw.Elapsed);
-                logger.LogInformation("Generated LLM reading in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-                return parsed;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex) when (attempt < Math.Max(0, _options.RetryCount))
-            {
-                logger.LogWarning(ex, "LLM call attempt {Attempt} failed; retrying", attempt + 1);
-            }
-            catch (Exception ex)
-            {
-                metrics.LlmFailed();
-                metrics.RecordLlmLatency(sw.Elapsed);
-                logger.LogError(ex, "LLM generation failed after {AttemptCount} attempt(s)", attempt + 1);
-                throw new InvalidOperationException("LLM generation failed after retries.", ex);
-            }
+            metrics.RecordLlmLatency(sw.Elapsed);
+            metrics.LlmFailed();
+            throw new InvalidOperationException(
+                "No healthy LLM worker is currently eligible for this reading.");
         }
 
-        throw new InvalidOperationException("LLM generation failed after retries.");
+        var failures = new List<Exception>();
+        foreach (var worker in workers)
+        {
+            using var lease = await _workerPool.AcquireAsync(plan.TierId, worker, cancellationToken);
+            Exception? workerFailure = null;
+            for (var attempt = 0; attempt <= Math.Max(0, _options.RetryCount); attempt++)
+            {
+                try
+                {
+                    var body = await SendToWorkerAsync(
+                        worker,
+                        BuildOpenAiCompatibleRequest(request, classification, payload, plan, worker),
+                        cancellationToken);
+                    var parsed = ParseOpenAiCompatibleResponse(
+                        body,
+                        classification,
+                        payload,
+                        worker.Model);
+                    var quality = _qualityScorer.Score(request, payload, parsed);
+                    if (!quality.Meets(_options.MinimumQualityScore))
+                    {
+                        throw new LlmResponseQualityException(quality);
+                    }
+
+                    _workerPool.MarkSuccess(plan.TierId, worker);
+                    metrics.PromptVariantSucceeded(
+                        plan.PromptVariant.ExperimentId,
+                        plan.PromptVariant.VariantId,
+                        quality.Score);
+                    metrics.RecordLlmLatency(sw.Elapsed);
+                    logger.LogInformation(
+                        "Generated LLM reading in {ElapsedMs}ms with tier {Tier}, worker {Worker}, provider {Provider}, prompt variant {PromptVariant}, quality {QualityScore}",
+                        sw.ElapsedMilliseconds,
+                        plan.TierId,
+                        worker.Id,
+                        worker.Provider,
+                        plan.PromptVariant.VariantId,
+                        quality.Score);
+                    return parsed with
+                    {
+                        ModelTier = plan.TierId,
+                        InferenceWorker = worker.Id,
+                        InferenceProvider = worker.Provider.ToString(),
+                        PromptVariant = plan.PromptVariant.VariantId,
+                        QualityScore = quality.Score
+                    };
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    workerFailure = exception;
+                    var canRetryWorker = attempt < Math.Max(0, _options.RetryCount)
+                        && IsTransient(exception);
+                    if (!canRetryWorker)
+                    {
+                        break;
+                    }
+
+                    logger.LogWarning(
+                        exception,
+                        "LLM worker {Worker} attempt {Attempt} failed transiently; retrying",
+                        worker.Id,
+                        attempt + 1);
+                }
+            }
+
+            workerFailure ??= new InvalidOperationException("LLM worker failed without an error.");
+            failures.Add(workerFailure);
+            _workerPool.MarkFailure(plan.TierId, worker);
+            logger.LogWarning(
+                workerFailure,
+                "LLM worker {Worker} in tier {Tier} failed; trying the next eligible worker",
+                worker.Id,
+                plan.TierId);
+        }
+
+        metrics.LlmFailed();
+        metrics.PromptVariantFailed(
+            plan.PromptVariant.ExperimentId,
+            plan.PromptVariant.VariantId);
+        metrics.RecordLlmLatency(sw.Elapsed);
+        var aggregate = new AggregateException(failures);
+        logger.LogError(
+            aggregate,
+            "LLM generation failed across {WorkerCount} eligible worker(s)",
+            workers.Count);
+        throw new InvalidOperationException("LLM generation failed after retries and failover.", aggregate);
+    }
+
+    private async Task<string> SendToWorkerAsync(
+        LlmWorkerDefinition worker,
+        object llmRequest,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(worker.TimeoutSeconds));
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, worker.Endpoint)
+        {
+            Content = JsonContent.Create(llmRequest, options: JsonOptions)
+        };
+        if (!string.IsNullOrWhiteSpace(worker.ApiKey))
+        {
+            var apiKey = string.Equals(worker.ApiKeyHeader, "Authorization", StringComparison.OrdinalIgnoreCase)
+                && !worker.ApiKey.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? $"Bearer {worker.ApiKey}"
+                    : worker.ApiKey;
+            requestMessage.Headers.TryAddWithoutValidation(worker.ApiKeyHeader, apiKey);
+        }
+
+        try
+        {
+            using var response = await httpClient.SendAsync(requestMessage, timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new LlmWorkerHttpException(response.StatusCode);
+            }
+
+            return await response.Content.ReadAsStringAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"LLM worker '{worker.Id}' exceeded its configured timeout.",
+                exception);
+        }
+    }
+
+    private static bool IsTransient(Exception exception)
+    {
+        if (exception is TimeoutException or HttpRequestException { StatusCode: null })
+        {
+            return true;
+        }
+
+        return exception is LlmWorkerHttpException httpException &&
+            (httpException.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests ||
+             (int)httpException.StatusCode >= 500);
     }
 
     private object BuildOpenAiCompatibleRequest(
         TarotReadingDto request,
         ClassificationResult classification,
-        InterpretationPayload payload) =>
+        InterpretationPayload payload,
+        InferencePlan plan,
+        LlmWorkerDefinition worker) =>
         new
         {
-            model = _options.Model,
+            model = worker.Model,
             max_tokens = _options.MaxOutputTokens,
             temperature = 0.2,
-            seed = 42,
+            seed = 41 + Math.Clamp(request.AnswerVariant, 1, 10),
             reasoning_effort = "none",
             response_format = BuildReadingResponseFormat(payload),
             messages = new[]
@@ -166,26 +295,7 @@ public sealed class LlmClient(
                 new
                 {
                     role = "system",
-                    // content = $$"""
-                    //     You write a detailed, reflective premium Tarot reading in {{LocaleName(payload.Locale)}}.
-                    //     {{LanguageInstruction(payload.Locale)}}
-                    //     The rule payload is authoritative. Do not change card ids, positions, or order.
-                    //     Return one JSON object only, without Markdown or code fences, matching the supplied response schema.
-                    //     Include exactly one cards item for every payload card in the same order. Use two or three concise sentences per card. Connect the cards into a coherent narrative, give practical reflection, and avoid guaranteed predictions.
-                    //     """
-                    content = $$"""
-                        You write a detailed, reflective premium Tarot reading in {{LocaleName(payload.Locale)}}.
-                        {{LanguageInstruction(payload.Locale)}}
-                        The rule payload is authoritative. Do not change card ids, positions, or order.
-                        Return one JSON object only, without Markdown or code fences, matching the supplied response schema.
-                        Include exactly one cards item for every payload card in the same order. Use two or three concise sentences per card. Connect the cards into a coherent narrative, give practical reflection, and avoid guaranteed predictions.
-
-                        For "reflectionQuestion": write ONE new, original question that invites the user to reflect on their own feelings or actions, based on the cards and their situation. Never copy, paraphrase, or restate the user's original question in this field.
-
-                        For "title", "summary", "mainTheme", "closingMessage": synthesize your own original text based on the cards and the user's question context. Do not copy the user's question verbatim anywhere in the response.
-
-                        For "opportunities", "challenges", "guidance": give 2-3 concrete, actionable items each, grounded in the specific cards drawn.
-                        """
+                    content = BuildSystemPrompt(payload, plan.PromptVariant)
                 },
                 new
                 {
@@ -202,6 +312,28 @@ public sealed class LlmClient(
                 }
             }
         };
+
+    private static string BuildSystemPrompt(
+        InterpretationPayload payload,
+        PromptVariantSelection promptVariant)
+    {
+        var basePrompt = $$"""
+                        You write a detailed, reflective premium Tarot reading in {{LocaleName(payload.Locale)}}.
+                        {{LanguageInstruction(payload.Locale)}}
+                        The rule payload is authoritative. Do not change card ids, positions, or order.
+                        Return one JSON object only, without Markdown or code fences, matching the supplied response schema.
+                        Include exactly one cards item for every payload card in the same order. Use two or three concise sentences per card. Connect the cards into a coherent narrative, give practical reflection, and avoid guaranteed predictions.
+
+                        For "reflectionQuestion": write ONE new, original question that invites the user to reflect on their own feelings or actions, based on the cards and their situation. Never copy, paraphrase, or restate the user's original question in this field.
+
+                        For "title", "summary", "mainTheme", "closingMessage": synthesize your own original text based on the cards and the user's question context. Do not copy the user's question verbatim anywhere in the response.
+
+                        For "opportunities", "challenges", "guidance": give 2-3 concrete, actionable items each, grounded in the specific cards drawn.
+                        """;
+        return string.IsNullOrWhiteSpace(promptVariant.AdditionalSystemInstruction)
+            ? basePrompt
+            : $"{basePrompt}\n\n{promptVariant.AdditionalSystemInstruction}";
+    }
 
     private static object BuildReadingResponseFormat(InterpretationPayload payload) => new
     {
@@ -387,4 +519,13 @@ public sealed class LlmClient(
         string ClosingMessage);
 
     private sealed record LlmCardContent(string Position, string CardId, string Interpretation);
+}
+
+internal sealed class LlmWorkerHttpException(HttpStatusCode statusCode)
+    : HttpRequestException(
+        $"LLM worker returned HTTP {(int)statusCode}.",
+        null,
+        statusCode)
+{
+    public new HttpStatusCode StatusCode { get; } = statusCode;
 }

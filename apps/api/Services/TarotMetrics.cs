@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using System.Collections.Concurrent;
 
 namespace TarotDestiny.Api.Services;
 
@@ -35,6 +36,8 @@ public sealed class TarotMetrics : IDisposable
     private long _llmFailureCount;
     private long _llmDurationCount;
     private long _llmDurationTotalMilliseconds;
+    private readonly ConcurrentDictionary<string, PromptVariantAggregate> _promptVariants =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public TarotMetrics()
     {
@@ -79,6 +82,20 @@ public sealed class TarotMetrics : IDisposable
         Interlocked.Add(ref _llmDurationTotalMilliseconds, (long)duration.TotalMilliseconds);
     }
 
+    public void PromptVariantSucceeded(string? experimentId, string variantId, double qualityScore)
+    {
+        var key = $"{experimentId ?? "NONE"}|{variantId}";
+        _promptVariants.GetOrAdd(key, _ => new PromptVariantAggregate(experimentId, variantId))
+            .Success(qualityScore);
+    }
+
+    public void PromptVariantFailed(string? experimentId, string variantId)
+    {
+        var key = $"{experimentId ?? "NONE"}|{variantId}";
+        _promptVariants.GetOrAdd(key, _ => new PromptVariantAggregate(experimentId, variantId))
+            .Failure();
+    }
+
     public TarotMetricSnapshot Snapshot()
     {
         var durationCount = Interlocked.Read(ref _llmDurationCount);
@@ -98,10 +115,39 @@ public sealed class TarotMetrics : IDisposable
             Interlocked.Read(ref _llmCallCount),
             Interlocked.Read(ref _llmAvoidedCount),
             Interlocked.Read(ref _llmFailureCount),
-            durationCount == 0 ? 0 : (double)durationTotal / durationCount);
+            durationCount == 0 ? 0 : (double)durationTotal / durationCount,
+            _promptVariants.Values
+                .Select(aggregate => aggregate.Snapshot())
+                .OrderBy(item => item.ExperimentId)
+                .ThenBy(item => item.VariantId)
+                .ToArray());
     }
 
     public void Dispose() => _meter.Dispose();
+
+    private sealed class PromptVariantAggregate(string? experimentId, string variantId)
+    {
+        private long _successes;
+        private long _failures;
+        private long _qualityScoreTenThousands;
+        public void Success(double score)
+        {
+            Interlocked.Increment(ref _successes);
+            Interlocked.Add(ref _qualityScoreTenThousands, (long)(Math.Clamp(score, 0, 1) * 10_000));
+        }
+        public void Failure() => Interlocked.Increment(ref _failures);
+        public PromptVariantMetricSnapshot Snapshot()
+        {
+            var successes = Interlocked.Read(ref _successes);
+            var totalScore = Interlocked.Read(ref _qualityScoreTenThousands);
+            return new PromptVariantMetricSnapshot(
+                experimentId,
+                variantId,
+                successes,
+                Interlocked.Read(ref _failures),
+                successes == 0 ? 0 : Math.Round((double)totalScore / successes / 10_000, 4));
+        }
+    }
 }
 
 public sealed record TarotMetricSnapshot(
@@ -117,4 +163,12 @@ public sealed record TarotMetricSnapshot(
     long LlmCalls,
     long LlmAvoided,
     long LlmFailures,
-    double AverageLlmLatencyMs);
+    double AverageLlmLatencyMs,
+    IReadOnlyList<PromptVariantMetricSnapshot> PromptVariants);
+
+public sealed record PromptVariantMetricSnapshot(
+    string? ExperimentId,
+    string VariantId,
+    long Successes,
+    long Failures,
+    double AverageQualityScore);

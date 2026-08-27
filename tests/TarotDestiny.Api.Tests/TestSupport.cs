@@ -65,10 +65,12 @@ internal static class TestSupport
     public static TarotReadingService NewReadingService(
         ILlmClient llmClient,
         IAnswerCache? cache = null,
-        LlmOptions? llmOptions = null)
+        LlmOptions? llmOptions = null,
+        IGeneratedAnswerStore? generatedAnswerStore = null,
+        TarotCacheOptions? tarotCacheOptions = null)
     {
         var classifier = NewClassifier();
-        var cacheSettings = Options.Create(new TarotCacheOptions());
+        var cacheSettings = Options.Create(tarotCacheOptions ?? new TarotCacheOptions());
         var gateSettings = Options.Create(llmOptions ?? new LlmOptions());
         var catalog = new TarotCatalog();
 
@@ -76,6 +78,9 @@ internal static class TestSupport
             classifier,
             new CacheKeyBuilder(cacheSettings),
             cache ?? new InMemoryAnswerCache(),
+            generatedAnswerStore ?? new NullGeneratedAnswerStore(),
+            new RandomAnswerVariantSelector(),
+            new InMemoryCacheLock(),
             new RuleInterpretationEngine(catalog),
             new RuleReadingRenderer(),
             llmClient,
@@ -84,6 +89,94 @@ internal static class TestSupport
             new TarotMetrics(),
             cacheSettings,
             LoggerFactory.CreateLogger<TarotReadingService>());
+    }
+}
+
+internal sealed class RecordingGeneratedAnswerStore : IGeneratedAnswerStore
+{
+    private readonly object _sync = new();
+    private readonly List<GeneratedAnswerWrite> _writes = [];
+
+    public int CallCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _writes.Count;
+            }
+        }
+    }
+
+    public IReadOnlyList<GeneratedAnswerWrite> Writes
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _writes];
+            }
+        }
+    }
+
+    public Task<CachedAnswerSet?> FindAsync(string cacheHash, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<CachedAnswerSet?>(null);
+    }
+
+    public Task<bool> SaveVariantAsync(GeneratedAnswerWrite answer, int variantNumber, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+        {
+            _writes.Add(answer);
+        }
+
+        return Task.FromResult(true);
+    }
+
+    public Task IncrementHitCountAsync(string cacheHash, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task<PersistentCacheAnalytics> GetAnalyticsAsync(int top, CancellationToken cancellationToken) =>
+        Task.FromResult(new PersistentCacheAnalytics(0, 0, 0, []));
+
+    public async IAsyncEnumerable<GeneratedAnswerSummary> EnumerateAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.CompletedTask;
+        yield break;
+    }
+}
+
+internal sealed class ThrowingGeneratedAnswerStore(Exception? exception = null) : IGeneratedAnswerStore
+{
+    private readonly Exception _exception = exception ?? new InvalidOperationException("PostgreSQL is unavailable.");
+    private int _callCount;
+
+    public int CallCount => Volatile.Read(ref _callCount);
+
+    public Task<CachedAnswerSet?> FindAsync(string cacheHash, CancellationToken cancellationToken) =>
+        Task.FromResult<CachedAnswerSet?>(null);
+
+    public Task<bool> SaveVariantAsync(GeneratedAnswerWrite answer, int variantNumber, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _callCount);
+        return Task.FromException<bool>(_exception);
+    }
+
+    public Task IncrementHitCountAsync(string cacheHash, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task<PersistentCacheAnalytics> GetAnalyticsAsync(int top, CancellationToken cancellationToken) =>
+        Task.FromException<PersistentCacheAnalytics>(_exception);
+
+    public async IAsyncEnumerable<GeneratedAnswerSummary> EnumerateAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.FromException(_exception);
+        yield break;
     }
 }
 

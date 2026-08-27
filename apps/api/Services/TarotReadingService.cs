@@ -14,6 +14,9 @@ public sealed class TarotReadingService(
     IQuestionClassifier classifier,
     ICacheKeyBuilder cacheKeyBuilder,
     IAnswerCache cache,
+    IGeneratedAnswerStore generatedAnswerStore,
+    IAnswerVariantSelector variantSelector,
+    ICacheLock cacheLock,
     IInterpretationEngine interpretationEngine,
     IRuleReadingRenderer ruleRenderer,
     ILlmClient llmClient,
@@ -33,6 +36,7 @@ public sealed class TarotReadingService(
             request.Locale,
             cancellationToken);
         var canUseSharedCache = classifier.CanUseSharedCache(classification);
+        var cacheHash = canUseSharedCache ? cacheKeyBuilder.BuildHash(request, classification) : null;
         var cacheKey = canUseSharedCache ? cacheKeyBuilder.BuildRedisKey(request, classification) : null;
 
         if (canUseSharedCache)
@@ -54,30 +58,186 @@ public sealed class TarotReadingService(
             return uncached with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
         }
 
-        var cached = await cache.GetAsync(cacheKey!, cancellationToken);
-        if (cached is not null)
+        var cached = await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken);
+        if (HasRequestedVariant(cached, request.AnswerVariant))
         {
-            metrics.CacheHit();
-            if (request.ReadingMode == ReadingMode.DEEP)
-            {
-                metrics.LlmAvoided();
-                logger.LogInformation("LLM call avoided for {CacheKey}", cacheKey);
-            }
-            logger.LogInformation("Tarot answer cache HIT for {CacheKey}", cacheKey);
-            return cached with
-            {
-                CacheStatus = CacheStatus.HIT,
-                CacheKey = cacheKey,
-                Classification = classification
-            };
+            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, classification, cancellationToken);
+        }
+
+        await using var cacheLease = await cacheLock.TryAcquireAsync(cacheHash!, cancellationToken);
+        cached = await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken);
+        if (HasRequestedVariant(cached, request.AnswerVariant))
+        {
+            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, classification, cancellationToken);
         }
 
         metrics.CacheMiss();
         logger.LogInformation("Tarot answer cache MISS for {CacheKey}", cacheKey);
         var generated = await GenerateResponseAsync(request, classification, includeRawQuestion: false, cancellationToken);
         var toCache = generated with { CacheStatus = CacheStatus.MISS, CacheKey = cacheKey };
-        await cache.SetAsync(cacheKey!, toCache, TimeSpan.FromDays(_cacheOptions.AnswerTtlDays), cancellationToken);
+        await PersistGeneratedAnswerAsync(
+            cacheHash!,
+            request,
+            classification,
+            toCache,
+            cancellationToken);
+        CachedAnswerSet answers;
+        try
+        {
+            answers = await generatedAnswerStore.FindAsync(cacheHash!, cancellationToken)
+                ?? MergeVariant(cached, request.AnswerVariant, toCache);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not reload generated variants for {CacheHash}", cacheHash);
+            answers = MergeVariant(cached, request.AnswerVariant, toCache);
+        }
+        await cache.SetAsync(
+            cacheKey!,
+            answers,
+            TimeSpan.FromDays(_cacheOptions.AnswerTtlDays),
+            cancellationToken);
         return toCache;
+    }
+
+    private async Task<CachedAnswerSet?> FindCachedAsync(
+        string cacheKey,
+        string cacheHash,
+        CancellationToken cancellationToken)
+    {
+        var cached = await cache.GetAsync(cacheKey, cancellationToken);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        try
+        {
+            var persisted = await generatedAnswerStore.FindAsync(cacheHash, cancellationToken);
+            if (persisted is null)
+            {
+                return null;
+            }
+
+            await cache.SetAsync(
+                cacheKey,
+                persisted,
+                TimeSpan.FromDays(_cacheOptions.AnswerTtlDays),
+                cancellationToken);
+            logger.LogInformation("Repopulated Redis from PostgreSQL for {CacheKey}", cacheKey);
+            return persisted;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "PostgreSQL lookup failed for {CacheHash}; continuing without persistent cache",
+                cacheHash);
+            return null;
+        }
+    }
+
+    private async Task<TarotReadingResponse> ReturnHitAsync(
+        CachedAnswerSet cached,
+        string cacheHash,
+        string cacheKey,
+        TarotReadingDto request,
+        ClassificationResult classification,
+        CancellationToken cancellationToken)
+    {
+        metrics.CacheHit();
+        if (request.ReadingMode == ReadingMode.DEEP)
+        {
+            metrics.LlmAvoided();
+        }
+
+        try
+        {
+            await generatedAnswerStore.IncrementHitCountAsync(cacheHash, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to increment persistent hit count for {CacheHash}", cacheHash);
+        }
+
+        var selected = request.AnswerVariant > 1
+            ? cached.Variants.Single(variant => variant.VariantNumber == request.AnswerVariant).Response
+            : variantSelector.Select(cached).Response;
+        logger.LogInformation("Tarot answer cache HIT for {CacheKey}", cacheKey);
+        return selected with
+        {
+            CacheStatus = CacheStatus.HIT,
+            CacheKey = cacheKey,
+            Classification = classification
+        };
+    }
+
+    private async Task PersistGeneratedAnswerAsync(
+        string cacheHash,
+        TarotReadingDto request,
+        ClassificationResult classification,
+        TarotReadingResponse response,
+        CancellationToken cancellationToken)
+    {
+        var answer = new GeneratedAnswerWrite(
+            cacheHash,
+            classification.Domain,
+            classification.Intent,
+            request.ReadingMode,
+            SpreadIds.Normalize(request.Spread),
+            request.Locale.ToLowerInvariant(),
+            request.Cards
+                .Select(card => new SelectedCard(
+                    card.Position.ToUpperInvariant(),
+                    card.CardId.ToUpperInvariant(),
+                    card.Orientation))
+                .ToArray(),
+            _cacheOptions.CacheVersion,
+            _cacheOptions.PromptVersion,
+            _cacheOptions.InterpretationVersion,
+            request.ReadingMode == ReadingMode.DEEP ? _cacheOptions.ModelVersion : null,
+            response);
+
+        try
+        {
+            await generatedAnswerStore.SaveVariantAsync(answer, request.AnswerVariant, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "PostgreSQL write failed for generated Tarot answer {CacheHash}; continuing with Redis",
+                cacheHash);
+        }
+    }
+
+    private static bool HasRequestedVariant(CachedAnswerSet? answers, int requestedVariant) =>
+        answers is not null && (requestedVariant <= 1 ||
+            answers.Variants.Any(variant => variant.VariantNumber == requestedVariant));
+
+    private static CachedAnswerSet MergeVariant(
+        CachedAnswerSet? existing,
+        int variantNumber,
+        TarotReadingResponse response)
+    {
+        var variants = (existing?.Variants ?? [])
+            .Where(variant => variant.VariantNumber != variantNumber)
+            .Append(new CachedAnswerVariant(variantNumber, response))
+            .OrderBy(variant => variant.VariantNumber)
+            .ToArray();
+        return new CachedAnswerSet(variants);
     }
 
     private async Task<TarotReadingResponse> GenerateResponseAsync(

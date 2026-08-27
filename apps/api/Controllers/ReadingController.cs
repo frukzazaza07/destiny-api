@@ -3,6 +3,7 @@ using TarotDestiny.Api.Contracts;
 using TarotDestiny.Api.DTOs;
 using TarotDestiny.Api.Domain;
 using TarotDestiny.Api.Services;
+using Microsoft.Extensions.Options;
 
 namespace TarotDestiny.Api.Controllers;
 
@@ -12,13 +13,16 @@ public sealed class ReadingController : MasterController
 {
     private readonly ITarotReadingService _readingService;
     private readonly IDeepReadingAccessPolicy _accessPolicy;
+    private readonly LlmOptions _llmOptions;
 
     public ReadingController(
         ITarotReadingService readingService,
-        IDeepReadingAccessPolicy accessPolicy)
+        IDeepReadingAccessPolicy accessPolicy,
+        IOptions<LlmOptions> llmOptions)
     {
         _readingService = readingService;
         _accessPolicy = accessPolicy;
+        _llmOptions = llmOptions.Value;
     }
 
     [HttpGet("options")]
@@ -28,7 +32,13 @@ public sealed class ReadingController : MasterController
         var deep = _accessPolicy.Evaluate(User);
         return SuccessResponse(new ReadingOptionsDto(
             [ReadingMode.STANDARD, ReadingMode.DEEP],
-            deep));
+            deep,
+            (_llmOptions.Tiers ?? [])
+                .Select(tier => new ReadingModelTierDto(
+                    tier.Id,
+                    tier.Model,
+                    tier.Workers.Any(worker => worker.Enabled)))
+                .ToArray()));
     }
 
     [HttpPost("generate")]

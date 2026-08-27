@@ -77,6 +77,54 @@ public sealed class ApiContractTests
     }
 
     [TestMethod]
+    public async Task DevelopmentOpenApiDocumentsAdminTrainingAndWarmupRoutes()
+    {
+        await using var factory = new ApiFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var paths = document.RootElement.GetProperty("paths");
+        Assert.IsTrue(paths.TryGetProperty("/api/admin/cache/analytics", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/admin/cache/warmups", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples/{id}/review", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples/export", out _));
+
+        using var swagger = await client.GetAsync("/swagger/index.html");
+        Assert.AreEqual(HttpStatusCode.OK, swagger.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task ProductionDoesNotExposeSwagger()
+    {
+        await using var factory = new ApiFactory(useProductionEnvironment: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task AdminRoutesRequireAdminKeyEnvelope()
+    {
+        await using var factory = new ApiFactory();
+        using var client = factory.CreateClient();
+
+        await AssertEnvelopeAsync(
+            await client.GetAsync("/api/admin/cache/analytics"),
+            HttpStatusCode.Unauthorized,
+            false,
+            "UNAUTHORIZED");
+        await AssertEnvelopeAsync(
+            await client.GetAsync("/api/classifier/training-examples"),
+            HttpStatusCode.Unauthorized,
+            false,
+            "UNAUTHORIZED");
+    }
+
+    [TestMethod]
     public async Task ExplicitControllerErrorsUseTheResponseEnvelope()
     {
         await using var developmentFactory = new ApiFactory();

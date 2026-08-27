@@ -20,4 +20,7 @@ message ClassifyResponse {
   string personalization = 4;
   string source = 5;
   string model_version = 6;
+  string decision_method = 7;
+  optional double semantic_similarity = 8;
+  string embedding_model_version = 9;
 }

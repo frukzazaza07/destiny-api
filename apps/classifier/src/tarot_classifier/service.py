@@ -37,18 +37,23 @@ class ClassifierService(classifier_pb2_grpc.ClassifierServiceServicer):
             )
 
         try:
-            prediction = self._model.predict(question)
+            prediction = self._model.predict(question, locale)
             personalization = detect_personalization(question)
         except Exception:
             # Do not include request text in logs or exception metadata.
             LOGGER.exception("Classifier inference failed")
             await context.abort(grpc.StatusCode.INTERNAL, "classification failed")
 
-        return classifier_pb2.ClassifyResponse(
+        response = classifier_pb2.ClassifyResponse(
             domain=prediction.domain,
             intent=prediction.intent,
             confidence=prediction.confidence,
             personalization=personalization,
             source=SOURCE,
             model_version=self._model.model_version,
+            decision_method=prediction.decision_method,
+            embedding_model_version=prediction.embedding_model_version or "",
         )
+        if prediction.semantic_similarity is not None:
+            response.semantic_similarity = prediction.semantic_similarity
+        return response

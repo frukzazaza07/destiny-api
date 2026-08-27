@@ -1,0 +1,17 @@
+.git
+.gitignore
+.vscode
+.vs
+.tmp
+**/bin
+**/obj
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.log
+**/*.tsbuildinfo
+.env
+.env.local

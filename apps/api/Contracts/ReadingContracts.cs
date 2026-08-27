@@ -9,7 +9,10 @@ public sealed record ClassificationResult(
     double Confidence,
     PersonalizationLevel Personalization,
     string Source = ClassifierSources.CSharpRule,
-    string? ModelVersion = null);
+    string? ModelVersion = null,
+    string DecisionMethod = ClassifierDecisionMethods.CSharpRule,
+    double? SemanticSimilarity = null,
+    string? EmbeddingModelVersion = null);
 
 public static class ClassifierSources
 {
@@ -17,6 +20,23 @@ public static class ClassifierSources
     public const string CSharpTopic = "CSHARP_TOPIC";
     public const string CSharpRuleFallback = "CSHARP_RULE_FALLBACK";
     public const string PythonGrpc = "PYTHON_GRPC";
+}
+
+public static class ClassifierDecisionMethods
+{
+    public const string CSharpRule = "CSHARP_RULE";
+    public const string TfidfLogisticRegression = "TFIDF_LOGREG";
+    public const string HybridAgreement = "HYBRID_AGREEMENT";
+    public const string SemanticNeighbor = "SEMANTIC_NEIGHBOR";
+    public const string SemanticConflict = "SEMANTIC_CONFLICT";
+
+    public static readonly string[] RemoteMethods =
+    [
+        TfidfLogisticRegression,
+        HybridAgreement,
+        SemanticNeighbor,
+        SemanticConflict
+    ];
 }
 
 public sealed record TarotReadingResponse(
@@ -34,7 +54,12 @@ public sealed record TarotReadingResponse(
     string? CacheKey,
     ReadingMode ReadingMode = ReadingMode.STANDARD,
     GenerationSource GenerationSource = GenerationSource.RULE_ENGINE,
-    string? GenerationModel = null);
+    string? GenerationModel = null,
+    string? ModelTier = null,
+    string? InferenceWorker = null,
+    string? InferenceProvider = null,
+    string? PromptVariant = null,
+    double? QualityScore = null);
 
 public sealed record CardReading(
     string Position,
