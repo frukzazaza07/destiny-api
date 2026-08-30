@@ -15,6 +15,9 @@ public sealed class ClassifierTrainingExampleEntity
     public string ReviewStatus { get; set; } = "PENDING";
     public string? ReviewedDomain { get; set; }
     public string? ReviewedIntent { get; set; }
+    public string? ReviewedPersonalization { get; set; }
+    public string? ParaphraseGroup { get; set; }
+    public int? ReviewerTimeSeconds { get; set; }
     public string ConsentVersion { get; set; } = string.Empty;
     public int Revision { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

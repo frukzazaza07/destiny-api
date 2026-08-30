@@ -48,6 +48,12 @@ The image generates bindings and trains the versioned artifact during the build.
 runs as a non-root user and exposes a Docker health check backed by the standard gRPC
 health API.
 
+The Compose artifact volume is versioned with the classifier artifact schema
+(`classifier-artifacts-v3`). When the artifact schema changes, use a new volume name
+instead of mounting an incompatible older model over the model baked into the image.
+The old named volume remains available for inspection or rollback and is not deleted
+automatically.
+
 ## Model lifecycle
 
 `scripts/train_model.py` writes `artifacts/classifier.joblib`. A seed artifact contains
@@ -72,5 +78,36 @@ To train from the API's approved-only admin export:
   --manifest artifacts/classifier-manifest.json
 ```
 
-The export schema is `tarot-classifier-reviewed-v1`. Training validates locale,
-taxonomy/domain agreement, length, duplicates, and conflicting labels before fitting.
+The dataset schema is `tarot-classifier-dataset-v2`. It records domain, intent,
+personalization, source provenance, review status, paraphrase group, audit timestamps,
+optional prediction/reviewer metadata, split, and evaluation tags. Only `APPROVED`
+rows enter training or evaluation; synthetic bootstrap rows remain `PENDING` until a
+human reviews them.
+
+Build the deterministic bilingual bootstrap corpus (11,836 rows) with:
+
+```powershell
+.venv\Scripts\python scripts/build_bootstrap_dataset.py
+```
+
+The generated `datasets/bootstrap-v2.json` contains reviewed seed rows plus expansion
+candidates and 1,000 hard negatives. Its pending rows are coverage work items, not
+production truth. Training uses paraphrase-group 70/15/15 splits and calibrates on the
+held-out validation partition only when every learned class has validation coverage.
+
+Generate the untouched final-test report and optionally fail CI when the strict gate
+does not pass:
+
+```powershell
+.venv\Scripts\python scripts/evaluate_model.py `
+  --artifact artifacts/classifier-candidate-v2.joblib `
+  --dataset datasets/bootstrap-v2.json `
+  --report artifacts/classifier-candidate-v2-report.json `
+  --approved-intent CAREER_CHANGE_JOB `
+  --require-quality-gate
+```
+
+The report includes strict `> 0.90` accepted precision and coverage by intent and
+locale, required language/boundary/rejection subsets, calibration error, confusion
+pairs, rejection rate, and a question-free false-high-confidence review list. Do not
+enable shared reads until the reviewed dataset targets and this quality gate pass.

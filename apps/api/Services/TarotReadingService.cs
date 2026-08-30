@@ -22,11 +22,14 @@ public sealed class TarotReadingService(
     ILlmClient llmClient,
     ILlmGate llmGate,
     IReadingResponseValidator validator,
+    ISharedReadingSafetyEvaluator safetyEvaluator,
     TarotMetrics metrics,
     IOptions<TarotCacheOptions> cacheOptions,
+    IOptions<DeepSharedCacheOptions> deepSharedCacheOptions,
     ILogger<TarotReadingService> logger) : ITarotReadingService
 {
     private readonly TarotCacheOptions _cacheOptions = cacheOptions.Value;
+    private readonly DeepSharedCacheOptions _deepCacheOptions = deepSharedCacheOptions.Value;
     private static readonly ClassificationResult DeepDirectClassification = new(
         TarotDomain.GENERAL,
         "UNCLASSIFIED",
@@ -39,7 +42,8 @@ public sealed class TarotReadingService(
     {
         metrics.ReadingRequested();
 
-        if (request.ReadingMode == ReadingMode.DEEP)
+        var isDeep = request.ReadingMode == ReadingMode.DEEP;
+        if (isDeep && !_deepCacheOptions.Enabled)
         {
             metrics.CacheSkipped();
             logger.LogInformation(
@@ -51,54 +55,134 @@ public sealed class TarotReadingService(
             return direct with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
         }
 
-        var classification = await classifier.ClassifyAsync(
-            request.Question,
-            request.Locale,
-            cancellationToken);
-        var canUseSharedCache = classifier.CanUseSharedCache(classification);
-        var cacheHash = canUseSharedCache ? cacheKeyBuilder.BuildHash(request, classification) : null;
-        var cacheKey = canUseSharedCache ? cacheKeyBuilder.BuildRedisKey(request, classification) : null;
+        metrics.CachePreflightRequested(request.ReadingMode);
+        ClassificationResult cacheClassification;
+        try
+        {
+            cacheClassification = await classifier.ClassifyAsync(
+                request.Question,
+                request.Locale,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (isDeep)
+        {
+            metrics.ClassifierRejected();
+            metrics.CachePreflightRejected(request.ReadingMode, "CLASSIFIER_FAILURE");
+            metrics.CacheSkipped();
+            logger.LogWarning(exception, "DEEP cache preflight failed; continuing through direct generation");
+            var direct = await GenerateResponseAsync(request, DeepDirectClassification, cancellationToken);
+            return direct with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
+        }
+        metrics.ClassifierObserved(cacheClassification);
+        var generationClassification = isDeep ? DeepDirectClassification : cacheClassification;
+        var classificationEligible = classifier.CanUseSharedCache(cacheClassification) &&
+            (!isDeep || string.Equals(
+                cacheClassification.Source,
+                ClassifierSources.PythonGrpc,
+                StringComparison.Ordinal));
+        var approvedIntent = !isDeep || _deepCacheOptions.ApprovedIntents.Contains(
+            cacheClassification.Intent,
+            StringComparer.OrdinalIgnoreCase);
+        var requestSafety = isDeep
+            ? safetyEvaluator.EvaluateRequest(request.Question)
+            : SharedContentSafetyResult.Safe;
+        var canUseSharedCache = classificationEligible && approvedIntent && requestSafety.IsSafe;
+        var cacheHash = canUseSharedCache
+            ? cacheKeyBuilder.BuildHash(request, cacheClassification, generationClassification)
+            : null;
+        var cacheKey = canUseSharedCache
+            ? cacheKeyBuilder.BuildRedisKey(request, cacheClassification, generationClassification)
+            : null;
 
         if (canUseSharedCache)
         {
             metrics.ClassifierAccepted();
-            logger.LogInformation("Classifier accepted {Domain}/{Intent} for shared cache", classification.Domain, classification.Intent);
+            metrics.CachePreflightEligible(request.ReadingMode);
+            logger.LogInformation("Classifier accepted {Domain}/{Intent} for shared cache", cacheClassification.Domain, cacheClassification.Intent);
         }
         else
         {
             metrics.ClassifierRejected();
-            logger.LogInformation("Classifier rejected {Domain}/{Intent} for shared cache", classification.Domain, classification.Intent);
+            metrics.CachePreflightRejected(
+                request.ReadingMode,
+                GetPreflightRejectionReason(cacheClassification, classificationEligible, approvedIntent, requestSafety));
+            logger.LogInformation("Classifier rejected {Domain}/{Intent} for shared cache", cacheClassification.Domain, cacheClassification.Intent);
         }
 
         if (!canUseSharedCache)
         {
             metrics.CacheSkipped();
-            logger.LogInformation("Skipping shared cache for {Domain}/{Intent}", classification.Domain, classification.Intent);
-            var uncached = await GenerateResponseAsync(request, classification, cancellationToken);
+            logger.LogInformation("Skipping shared cache for {Domain}/{Intent}", cacheClassification.Domain, cacheClassification.Intent);
+            var uncached = await GenerateResponseAsync(request, generationClassification, cancellationToken);
             return uncached with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
         }
 
-        var cached = await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken);
-        if (HasRequestedVariant(cached, request.AnswerVariant))
+        var mayRead = !isDeep || _deepCacheOptions.ReadEnabled;
+        var mayWrite = !isDeep || _deepCacheOptions.WriteEnabled;
+        var cached = mayRead
+            ? await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken)
+            : null;
+        if (mayRead && HasRequestedVariant(cached, request.AnswerVariant))
         {
-            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, classification, cancellationToken);
+            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, generationClassification, cancellationToken);
         }
 
-        await using var cacheLease = await cacheLock.TryAcquireAsync(cacheHash!, cancellationToken);
-        cached = await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken);
-        if (HasRequestedVariant(cached, request.AnswerVariant))
+        IAsyncDisposable? cacheLease;
+        try
         {
-            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, classification, cancellationToken);
+            cacheLease = await cacheLock.TryAcquireAsync(cacheHash!, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (isDeep)
+        {
+            logger.LogWarning(exception, "DEEP cache lock failed; continuing through direct generation");
+            metrics.CacheSkipped();
+            var direct = await GenerateResponseAsync(request, DeepDirectClassification, cancellationToken);
+            return direct with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
+        }
+        await using var cacheLeaseScope = cacheLease;
+        cached = mayRead
+            ? await FindCachedAsync(cacheKey!, cacheHash!, cancellationToken)
+            : null;
+        if (mayRead && HasRequestedVariant(cached, request.AnswerVariant))
+        {
+            return await ReturnHitAsync(cached!, cacheHash!, cacheKey!, request, generationClassification, cancellationToken);
         }
 
-        metrics.CacheMiss();
+        metrics.CacheMiss(request.ReadingMode);
         logger.LogInformation("Tarot answer cache MISS for {CacheKey}", cacheKey);
-        var generated = await GenerateResponseAsync(request, classification, cancellationToken);
+        var generated = await GenerateResponseAsync(request, generationClassification, cancellationToken);
+
+        if (!mayWrite)
+        {
+            metrics.CacheSkipped();
+            return generated with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
+        }
+
+        if (isDeep)
+        {
+            var responseSafety = safetyEvaluator.EvaluateResponse(request.Question, generated);
+            if (!responseSafety.IsSafe)
+            {
+                metrics.CachePreflightRejected(request.ReadingMode, $"CONTENT_{responseSafety.Reason}");
+                metrics.CacheSkipped();
+                logger.LogInformation("Skipping shared DEEP persistence because content safety rejected {Reason}", responseSafety.Reason);
+                return generated with { CacheStatus = CacheStatus.SKIPPED, CacheKey = null };
+            }
+        }
+
         var toCache = generated with { CacheStatus = CacheStatus.MISS, CacheKey = cacheKey };
         await PersistGeneratedAnswerAsync(
             cacheHash!,
             request,
-            classification,
+            cacheClassification,
             toCache,
             cancellationToken);
         CachedAnswerSet answers;
@@ -112,12 +196,24 @@ public sealed class TarotReadingService(
             logger.LogWarning(exception, "Could not reload generated variants for {CacheHash}", cacheHash);
             answers = MergeVariant(cached, request.AnswerVariant, toCache);
         }
-        await cache.SetAsync(
-            cacheKey!,
-            answers,
-            TimeSpan.FromDays(_cacheOptions.AnswerTtlDays),
-            cancellationToken);
+        var runtimeStored = await SetRuntimeCacheAsync(cacheKey!, answers, cancellationToken);
+        metrics.CacheStored(request.ReadingMode, runtimeStored);
         return toCache;
+    }
+
+    private static string GetPreflightRejectionReason(
+        ClassificationResult classification,
+        bool classificationEligible,
+        bool approvedIntent,
+        SharedContentSafetyResult requestSafety)
+    {
+        if (classification.Personalization == PersonalizationLevel.HIGH) return "PERSONALIZATION";
+        if (string.Equals(classification.Intent, TarotIntents.PersonalCustom, StringComparison.OrdinalIgnoreCase)) return "INTENT";
+        if (!string.Equals(classification.Source, ClassifierSources.PythonGrpc, StringComparison.Ordinal) &&
+            !classificationEligible) return "CLASSIFIER_SOURCE";
+        if (!classificationEligible) return "CONFIDENCE";
+        if (!approvedIntent) return "INTENT_NOT_APPROVED";
+        return requestSafety.IsSafe ? "UNKNOWN" : $"CONTENT_{requestSafety.Reason}";
     }
 
     private async Task<CachedAnswerSet?> FindCachedAsync(
@@ -125,7 +221,20 @@ public sealed class TarotReadingService(
         string cacheHash,
         CancellationToken cancellationToken)
     {
-        var cached = await cache.GetAsync(cacheKey, cancellationToken);
+        CachedAnswerSet? cached;
+        try
+        {
+            cached = await cache.GetAsync(cacheKey, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Runtime cache lookup failed for {CacheKey}; continuing", cacheKey);
+            cached = null;
+        }
         if (cached is not null)
         {
             return cached;
@@ -139,11 +248,7 @@ public sealed class TarotReadingService(
                 return null;
             }
 
-            await cache.SetAsync(
-                cacheKey,
-                persisted,
-                TimeSpan.FromDays(_cacheOptions.AnswerTtlDays),
-                cancellationToken);
+            await SetRuntimeCacheAsync(cacheKey, persisted, cancellationToken);
             logger.LogInformation("Repopulated Redis from PostgreSQL for {CacheKey}", cacheKey);
             return persisted;
         }
@@ -161,6 +266,31 @@ public sealed class TarotReadingService(
         }
     }
 
+    private async Task<bool> SetRuntimeCacheAsync(
+        string cacheKey,
+        CachedAnswerSet answers,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await cache.SetAsync(
+                cacheKey,
+                answers,
+                TimeSpan.FromDays(_cacheOptions.AnswerTtlDays),
+                cancellationToken);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Runtime cache write failed for {CacheKey}; continuing", cacheKey);
+            return false;
+        }
+    }
+
     private async Task<TarotReadingResponse> ReturnHitAsync(
         CachedAnswerSet cached,
         string cacheHash,
@@ -169,7 +299,7 @@ public sealed class TarotReadingService(
         ClassificationResult classification,
         CancellationToken cancellationToken)
     {
-        metrics.CacheHit();
+        metrics.CacheHit(request.ReadingMode);
         if (request.ReadingMode == ReadingMode.DEEP)
         {
             metrics.LlmAvoided();

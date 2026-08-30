@@ -3,6 +3,7 @@ namespace TarotDestiny.Api.Services;
 public sealed class ClassifierOptions
 {
     public double MinimumCacheConfidence { get; set; } = 0.85;
+    public double MinimumSharedCacheConfidence { get; set; } = 0.90;
     public bool UseGrpc { get; set; } = true;
     public string GrpcAddress { get; set; } = "http://127.0.0.1:50051";
     public int DeadlineMilliseconds { get; set; } = 500;
@@ -10,11 +11,39 @@ public sealed class ClassifierOptions
 
 public sealed class TarotCacheOptions
 {
-    public string CacheVersion { get; set; } = "v2";
+    public string CacheVersion { get; set; } = "v3";
+    public string TaxonomyVersion { get; set; } = "TAXONOMY_V1";
     public string PromptVersion { get; set; } = "PROMPT_V1";
     public string InterpretationVersion { get; set; } = "INTERPRETATION_V1";
     public string? ModelVersion { get; set; }
     public int AnswerTtlDays { get; set; } = 30;
+}
+
+public sealed class DeepSharedCacheOptions
+{
+    public bool Enabled { get; set; }
+    public bool ReadEnabled { get; set; }
+    public bool WriteEnabled { get; set; }
+    public List<string> ApprovedIntents { get; set; } = [];
+}
+
+public sealed class StartupCacheWarmupOptions
+{
+    public bool Enabled { get; set; }
+    public int DelaySeconds { get; set; } = 15;
+    public bool RehydrateRedisFromPostgres { get; set; } = true;
+    public List<string> Locales { get; set; } = ["en", "th"];
+    public List<string> ReadingModes { get; set; } = ["STANDARD"];
+    public List<string> ApprovedIntents { get; set; } = [];
+    public List<string> Spreads { get; set; } = ["DAILY_1"];
+    public int Variants { get; set; } = 1;
+    public int MaxCombinationsPerStartup { get; set; } = 500;
+    public int MaxConcurrency { get; set; } = 1;
+    public int MaxDeepGenerationsPerStartup { get; set; }
+    public int RetryCount { get; set; } = 2;
+    public int RetryDelaySeconds { get; set; } = 10;
+    public Dictionary<string, Dictionary<string, string>> CanonicalDeepQuestions { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class LlmOptions

@@ -96,7 +96,9 @@ services:
       CLASSIFIER_PORT: "50051"
       CLASSIFIER_MODEL_PATH: /workspace/apps/classifier/artifacts/classifier.joblib
     volumes:
-      - classifier-artifacts:/workspace/apps/classifier/artifacts
+      # Version the persistent model volume with the artifact schema. Reusing an
+      # older volume masks the model baked into the image and prevents startup.
+      - classifier-artifacts-v3:/workspace/apps/classifier/artifacts
     networks:
       - backend
     healthcheck:
@@ -233,5 +235,5 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-  classifier-artifacts:
+  classifier-artifacts-v3:
   ollama-models:

@@ -31,7 +31,11 @@ internal static class TestSupport
 
     public static RuleQuestionClassifier NewClassifier(double threshold = 0.85) =>
         new(
-            Options.Create(new ClassifierOptions { MinimumCacheConfidence = threshold }),
+            Options.Create(new ClassifierOptions
+            {
+                MinimumCacheConfidence = threshold,
+                MinimumSharedCacheConfidence = threshold
+            }),
             LoggerFactory.CreateLogger<RuleQuestionClassifier>());
 
     public static TarotReadingResponse ValidResponse(
@@ -68,7 +72,9 @@ internal static class TestSupport
         LlmOptions? llmOptions = null,
         IGeneratedAnswerStore? generatedAnswerStore = null,
         TarotCacheOptions? tarotCacheOptions = null,
-        IQuestionClassifier? classifier = null)
+        IQuestionClassifier? classifier = null,
+        DeepSharedCacheOptions? deepSharedCacheOptions = null,
+        ISharedReadingSafetyEvaluator? safetyEvaluator = null)
     {
         classifier ??= NewClassifier();
         var cacheSettings = Options.Create(tarotCacheOptions ?? new TarotCacheOptions());
@@ -87,8 +93,10 @@ internal static class TestSupport
             llmClient,
             new LlmGate(gateSettings),
             new ReadingResponseValidator(),
+            safetyEvaluator ?? new SharedReadingSafetyEvaluator(),
             new TarotMetrics(),
             cacheSettings,
+            Options.Create(deepSharedCacheOptions ?? new DeepSharedCacheOptions()),
             LoggerFactory.CreateLogger<TarotReadingService>());
     }
 }

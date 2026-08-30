@@ -12,7 +12,7 @@ type Metrics = {
   baseInterpretationMisses: number;
 };
 type HotAnswer = { cacheHash: string; domain: string; intent: string; readingMode: string; locale: string; hitCount: number; variantCount: number };
-type ReviewExample = { id: string; question: string; locale: string; predictedDomain: string; predictedIntent: string; predictedConfidence: number; reviewStatus: string; revision: number };
+type ReviewExample = { id: string; question: string; locale: string; predictedDomain: string; predictedIntent: string; predictedConfidence: number; predictedPersonalization: "LOW" | "MEDIUM" | "HIGH"; reviewStatus: string; revision: number };
 type ReviewPage = { items: ReviewExample[]; total: number };
 type Warmup = { id: string; status: string; offset: number; requestedCombinations: number; totalCombinations: number; completedCombinations: number; generatedVariants: number; failedCombinations: number; lastError: string | null };
 
@@ -78,6 +78,8 @@ export default function AdminPage() {
         status,
         domain: status === "APPROVED" ? example.predictedDomain : null,
         intent: status === "APPROVED" ? example.predictedIntent : null,
+        personalization: status === "APPROVED" ? example.predictedPersonalization : null,
+        paraphraseGroup: status === "APPROVED" ? `production-${example.id}` : null,
         expectedRevision: example.revision
       })
     });

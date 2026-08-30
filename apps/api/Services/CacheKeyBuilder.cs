@@ -10,8 +10,11 @@ namespace TarotDestiny.Api.Services;
 public interface ICacheKeyBuilder
 {
     string BuildCanonical(TarotReadingDto request, ClassificationResult classification);
+    string BuildCanonical(TarotReadingDto request, ClassificationResult classification, ClassificationResult routingClassification);
     string BuildHash(TarotReadingDto request, ClassificationResult classification);
+    string BuildHash(TarotReadingDto request, ClassificationResult classification, ClassificationResult routingClassification);
     string BuildRedisKey(TarotReadingDto request, ClassificationResult classification);
+    string BuildRedisKey(TarotReadingDto request, ClassificationResult classification, ClassificationResult routingClassification);
 }
 
 public sealed class CacheKeyBuilder : ICacheKeyBuilder
@@ -33,10 +36,17 @@ public sealed class CacheKeyBuilder : ICacheKeyBuilder
     }
 
     public string BuildCanonical(TarotReadingDto request, ClassificationResult classification)
+        => BuildCanonical(request, classification, classification);
+
+    public string BuildCanonical(
+        TarotReadingDto request,
+        ClassificationResult classification,
+        ClassificationResult routingClassification)
     {
         var parts = new List<string>
         {
             _options.CacheVersion,
+            _options.TaxonomyVersion,
             classification.Domain.ToString(),
             classification.Intent,
             request.ReadingMode.ToString(),
@@ -53,7 +63,7 @@ public sealed class CacheKeyBuilder : ICacheKeyBuilder
         if (request.ReadingMode == ReadingMode.DEEP &&
             _inferenceRouter is not null)
         {
-            var plan = _inferenceRouter.Resolve(request, classification);
+            var plan = _inferenceRouter.Resolve(request, routingClassification);
             parts.Add(plan.TierId);
             parts.Add(plan.CacheModelVersion);
             if (plan.PromptVariant.CacheDiscriminator is not null)
@@ -76,6 +86,21 @@ public sealed class CacheKeyBuilder : ICacheKeyBuilder
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
     }
 
+    public string BuildHash(
+        TarotReadingDto request,
+        ClassificationResult classification,
+        ClassificationResult routingClassification)
+    {
+        var canonical = BuildCanonical(request, classification, routingClassification);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+
     public string BuildRedisKey(TarotReadingDto request, ClassificationResult classification) =>
         $"tarot:answer:{BuildHash(request, classification)}";
+
+    public string BuildRedisKey(
+        TarotReadingDto request,
+        ClassificationResult classification,
+        ClassificationResult routingClassification) =>
+        $"tarot:answer:{BuildHash(request, classification, routingClassification)}";
 }

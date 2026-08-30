@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
 import re
@@ -11,9 +12,16 @@ import unicodedata
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 from sklearn.pipeline import FeatureUnion, Pipeline
 
-from .reviewed_data import ReviewedExample, normalize_reviewed_question
+from .reviewed_data import (
+    REVIEWED_DATA_SCHEMA_VERSION,
+    ReviewedExample,
+    assign_grouped_splits,
+    normalize_reviewed_question,
+)
 from .seed_data import iter_training_examples
 from .semantic_index import EMBEDDING_MODEL_VERSION, SemanticIntentIndex, SemanticMatch
 from .taxonomy import (
@@ -22,6 +30,7 @@ from .taxonomy import (
     MODEL_VERSION,
     PERSONAL_CUSTOM,
     REVIEWED_MODEL_PREFIX,
+    TAXONOMY_VERSION,
 )
 
 RANDOM_STATE = 1729
@@ -90,11 +99,14 @@ class Prediction:
 
 @dataclass
 class ClassifierModel:
-    pipeline: Pipeline
+    pipeline: object
     model_version: str = MODEL_VERSION
     semantic_index: SemanticIntentIndex | None = None
     reviewed_example_count: int = 0
     reviewed_dataset_hash: str | None = None
+    calibrated: bool = False
+    build_timestamp: str | None = None
+    evaluation_metrics: dict[str, object] | None = None
 
     @classmethod
     def train(
@@ -102,11 +114,26 @@ class ClassifierModel:
         reviewed_examples: list[ReviewedExample] | None = None,
     ) -> "ClassifierModel":
         reviewed = list(reviewed_examples or ())
-        examples = [*iter_training_examples(), *reviewed]
+        splits = assign_grouped_splits(reviewed)
+        train_reviewed = splits["TRAIN"] if reviewed else []
+        examples = [*iter_training_examples(), *train_reviewed]
         questions = [example.question for example in examples]
         labels = [example.intent for example in examples]
         pipeline = build_pipeline()
         pipeline.fit(questions, labels)
+        validation = splits["VALIDATION"]
+        calibrated = False
+        validation_labels = {example.intent for example in validation}
+        if len(validation) >= 20 and validation_labels == set(pipeline.classes_):
+            calibrator = CalibratedClassifierCV(
+                FrozenEstimator(pipeline), method="sigmoid", cv=2
+            )
+            calibrator.fit(
+                [example.question for example in validation],
+                [example.intent for example in validation],
+            )
+            pipeline = calibrator
+            calibrated = True
         dataset_hash = reviewed_dataset_hash(reviewed) if reviewed else None
         model_version = (
             f"{REVIEWED_MODEL_PREFIX}-{dataset_hash[:12]}"
@@ -116,16 +143,18 @@ class ClassifierModel:
         return cls(
             pipeline=pipeline,
             model_version=model_version,
-            semantic_index=SemanticIntentIndex.train(reviewed),
+            semantic_index=SemanticIntentIndex.train(train_reviewed),
             reviewed_example_count=len(reviewed),
             reviewed_dataset_hash=dataset_hash,
+            calibrated=calibrated,
+            build_timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def predict(self, question: str, locale: str = "en") -> Prediction:
         probabilities = self.pipeline.predict_proba([question])[0]
-        classifier = self.pipeline.named_steps["classifier"]
+        classes = self.pipeline.classes_
         best_index = int(probabilities.argmax())
-        logistic_intent = str(classifier.classes_[best_index])
+        logistic_intent = str(classes[best_index])
         logistic_confidence = float(probabilities[best_index])
         semantic_match = (
             self.semantic_index.find(question, locale)
@@ -136,7 +165,7 @@ class ClassifierModel:
         if semantic_match is not None and _is_strong_semantic_match(semantic_match):
             if semantic_match.intent == logistic_intent:
                 return Prediction(
-                    INTENT_TO_DOMAIN[logistic_intent],
+                    _domain_for_prediction(logistic_intent),
                     logistic_intent,
                     max(logistic_confidence, semantic_match.similarity),
                     DECISION_HYBRID_AGREEMENT,
@@ -146,7 +175,7 @@ class ClassifierModel:
 
             if logistic_confidence < MAX_LOGISTIC_CONFIDENCE_FOR_SEMANTIC_OVERRIDE:
                 return Prediction(
-                    INTENT_TO_DOMAIN[semantic_match.intent],
+                    _domain_for_prediction(semantic_match.intent),
                     semantic_match.intent,
                     semantic_match.similarity,
                     DECISION_SEMANTIC_NEIGHBOR,
@@ -182,7 +211,7 @@ class ClassifierModel:
             )
 
         return Prediction(
-            INTENT_TO_DOMAIN[logistic_intent],
+            _domain_for_prediction(logistic_intent),
             logistic_intent,
             logistic_confidence,
             DECISION_TFIDF_LOGREG,
@@ -200,6 +229,11 @@ class ClassifierModel:
             "semantic_index": self.semantic_index,
             "reviewed_example_count": self.reviewed_example_count,
             "reviewed_dataset_hash": self.reviewed_dataset_hash,
+            "taxonomy_version": TAXONOMY_VERSION,
+            "training_data_version": REVIEWED_DATA_SCHEMA_VERSION,
+            "calibrated": self.calibrated,
+            "build_timestamp": self.build_timestamp,
+            "evaluation_metrics": self.evaluation_metrics,
         }
         joblib.dump(payload, artifact_path)
 
@@ -215,6 +249,10 @@ class ClassifierModel:
             raise ValueError("Classifier artifact model version is not supported.")
         if payload.get("intent_to_domain") != INTENT_TO_DOMAIN:
             raise ValueError("Classifier artifact taxonomy does not match this service.")
+        if payload.get("taxonomy_version") != TAXONOMY_VERSION:
+            raise ValueError("Classifier artifact taxonomy version is not supported.")
+        if payload.get("training_data_version") != REVIEWED_DATA_SCHEMA_VERSION:
+            raise ValueError("Classifier artifact training-data version is not supported.")
         semantic_index = payload.get("semantic_index")
         if semantic_index is not None and (
             not isinstance(semantic_index, SemanticIntentIndex)
@@ -227,6 +265,9 @@ class ClassifierModel:
             semantic_index=semantic_index,
             reviewed_example_count=int(payload.get("reviewed_example_count", 0)),
             reviewed_dataset_hash=payload.get("reviewed_dataset_hash"),
+            calibrated=bool(payload.get("calibrated", False)),
+            build_timestamp=payload.get("build_timestamp"),
+            evaluation_metrics=payload.get("evaluation_metrics"),
         )
 
     def manifest(self, seed_example_count: int) -> dict[str, object]:
@@ -243,6 +284,11 @@ class ClassifierModel:
             "totalTrainingExampleCount": seed_example_count
             + self.reviewed_example_count,
             "reviewedDatasetHash": self.reviewed_dataset_hash,
+            "taxonomyVersion": TAXONOMY_VERSION,
+            "trainingDataVersion": REVIEWED_DATA_SCHEMA_VERSION,
+            "calibrated": self.calibrated,
+            "buildTimestamp": self.build_timestamp,
+            "evaluationMetrics": self.evaluation_metrics,
         }
 
 
@@ -251,7 +297,13 @@ def reviewed_dataset_hash(examples: list[ReviewedExample]) -> str:
         "\0".join(
             (
                 example.locale,
+                example.effective_domain,
                 example.intent,
+                example.personalization,
+                example.source,
+                example.review_status,
+                example.group,
+                example.split or "AUTO",
                 normalize_reviewed_question(example.question).casefold(),
             )
         )
@@ -270,3 +322,7 @@ def _is_strong_semantic_match(match: SemanticMatch) -> bool:
         and match.margin >= MIN_SEMANTIC_MARGIN
         and match.agreement >= MIN_SEMANTIC_AGREEMENT
     )
+
+
+def _domain_for_prediction(intent: str) -> str:
+    return "GENERAL" if intent == PERSONAL_CUSTOM else INTENT_TO_DOMAIN[intent]

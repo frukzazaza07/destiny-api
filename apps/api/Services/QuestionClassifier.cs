@@ -105,7 +105,7 @@ public sealed class RuleQuestionClassifier(IOptions<ClassifierOptions> options, 
     }
 
     public bool CanUseSharedCache(ClassificationResult classification) =>
-        classification.Confidence >= _options.MinimumCacheConfidence &&
+        classification.Confidence > _options.MinimumSharedCacheConfidence &&
         classification.Personalization != PersonalizationLevel.HIGH &&
         !string.Equals(classification.Intent, TarotIntents.PersonalCustom, StringComparison.OrdinalIgnoreCase);
 
@@ -333,6 +333,7 @@ public sealed class ResilientQuestionClassifier(
         }
         catch (Exception ex)
         {
+            metrics.ClassifierInvalidResponse();
             metrics.ClassifierFallbackUsed();
             logger.LogWarning(
                 ex,
@@ -348,7 +349,7 @@ public sealed class ResilientQuestionClassifier(
     }
 
     public bool CanUseSharedCache(ClassificationResult classification) =>
-        classification.Confidence >= _options.MinimumCacheConfidence &&
+        classification.Confidence > _options.MinimumSharedCacheConfidence &&
         classification.Personalization != PersonalizationLevel.HIGH &&
         !string.Equals(classification.Intent, TarotIntents.PersonalCustom, StringComparison.OrdinalIgnoreCase);
 

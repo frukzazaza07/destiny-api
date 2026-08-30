@@ -134,6 +134,9 @@ public sealed class AdvancedCacheAndInferenceTests
         Assert.AreEqual("tarot_question_classification_training", entity.GetTableName());
         Assert.IsTrue(entity.GetIndexes().Any(index =>
             index.IsUnique && index.Properties.Any(property => property.Name == nameof(ClassifierTrainingExampleEntity.QuestionHash))));
+        Assert.IsNotNull(entity.FindProperty(nameof(ClassifierTrainingExampleEntity.ReviewedPersonalization)));
+        Assert.IsNotNull(entity.FindProperty(nameof(ClassifierTrainingExampleEntity.ParaphraseGroup)));
+        Assert.IsNotNull(entity.FindProperty(nameof(ClassifierTrainingExampleEntity.ReviewerTimeSeconds)));
     }
 
     [TestMethod]

@@ -57,6 +57,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddOptions<ClassifierOptions>()
     .Bind(builder.Configuration.GetSection("Classifier"))
     .Validate(options => options.MinimumCacheConfidence is >= 0 and <= 1, "Classifier confidence must be between 0 and 1.")
+    .Validate(options => options.MinimumSharedCacheConfidence is >= 0 and <= 1, "Shared-cache confidence must be between 0 and 1.")
     .Validate(options => options.DeadlineMilliseconds > 0, "Classifier deadline must be positive.")
     .Validate(options =>
         !options.UseGrpc || Uri.TryCreate(options.GrpcAddress, UriKind.Absolute, out _),
@@ -67,10 +68,32 @@ builder.Services.AddOptions<TarotCacheOptions>()
     .Validate(options => options.AnswerTtlDays > 0, "Tarot cache TTL must be positive.")
     .Validate(options =>
         !string.IsNullOrWhiteSpace(options.CacheVersion) &&
+        !string.IsNullOrWhiteSpace(options.TaxonomyVersion) &&
         !string.IsNullOrWhiteSpace(options.PromptVersion) &&
         !string.IsNullOrWhiteSpace(options.InterpretationVersion) &&
         !string.IsNullOrWhiteSpace(options.ModelVersion),
         "Tarot cache, content, and Deep model versions are required.")
+    .ValidateOnStart();
+builder.Services.AddOptions<DeepSharedCacheOptions>()
+    .Bind(builder.Configuration.GetSection("DeepSharedCache"))
+    .Validate(options => options.ApprovedIntents.All(intent => TarotIntents.All.Contains(intent, StringComparer.OrdinalIgnoreCase)),
+        "Deep shared-cache approved intents must use the fixed taxonomy.")
+    .ValidateOnStart();
+builder.Services.AddOptions<StartupCacheWarmupOptions>()
+    .Bind(builder.Configuration.GetSection("StartupCacheWarmup"))
+    .Validate(options =>
+        options.DelaySeconds >= 0 && options.Variants > 0 &&
+        options.MaxCombinationsPerStartup > 0 && options.MaxConcurrency > 0 &&
+        options.MaxDeepGenerationsPerStartup >= 0 && options.RetryCount >= 0 &&
+        options.RetryDelaySeconds >= 0,
+        "Startup cache warmup limits are invalid.")
+    .Validate(options => options.Locales.All(LocaleIds.IsSupported), "Startup warmup locales must be en or th.")
+    .Validate(options => options.ApprovedIntents.All(intent => TarotIntents.All.Contains(intent, StringComparer.OrdinalIgnoreCase)),
+        "Startup warmup approved intents must use the fixed taxonomy.")
+    .Validate(options => options.Spreads.All(spread => SpreadIds.TryNormalize(spread, out _)),
+        "Startup warmup spreads are invalid.")
+    .Validate(options => options.ReadingModes.All(mode => Enum.TryParse<ReadingMode>(mode, true, out _)),
+        "Startup warmup reading modes are invalid.")
     .ValidateOnStart();
 builder.Services.AddOptions<LlmOptions>()
     .Bind(builder.Configuration.GetSection("LLM"))
@@ -191,6 +214,7 @@ builder.Services.AddSingleton<IDeckService, DeckService>();
 builder.Services.AddSingleton<ILlmGate, LlmGate>();
 builder.Services.AddSingleton<IDeepReadingAccessPolicy, DeepReadingAccessPolicy>();
 builder.Services.AddSingleton<IReadingResponseValidator, ReadingResponseValidator>();
+builder.Services.AddSingleton<ISharedReadingSafetyEvaluator, SharedReadingSafetyEvaluator>();
 builder.Services.AddSingleton<TarotMetrics>();
 builder.Services.AddSingleton<CacheWarmupService>();
 builder.Services.AddSingleton<ICacheWarmupService>(services => services.GetRequiredService<CacheWarmupService>());

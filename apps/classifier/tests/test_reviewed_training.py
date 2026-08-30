@@ -13,16 +13,18 @@ CLASSIFIER_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CLASSIFIER_ROOT / "src"))
 
 from tarot_classifier.model import ClassifierModel  # noqa: E402
+from tarot_classifier.evaluation import REQUIRED_SUBSETS, evaluate_model  # noqa: E402
 from tarot_classifier.reviewed_data import (  # noqa: E402
     REVIEWED_DATA_SCHEMA_VERSION,
     ReviewedExample,
+    assign_grouped_splits,
     load_reviewed_examples,
 )
 from tarot_classifier.semantic_index import (  # noqa: E402
     EMBEDDING_MODEL_VERSION,
     SemanticIntentIndex,
 )
-from tarot_classifier.taxonomy import REVIEWED_MODEL_PREFIX  # noqa: E402
+from tarot_classifier.taxonomy import INTENT_TO_DOMAIN, REVIEWED_MODEL_PREFIX  # noqa: E402
 
 
 def reviewed_examples() -> list[ReviewedExample]:
@@ -43,12 +45,24 @@ class ReviewedDataTests(unittest.TestCase):
             json.dumps(
                 {
                     "schemaVersion": REVIEWED_DATA_SCHEMA_VERSION,
-                    "examples": examples,
+                    "examples": [self._complete(example, index) for index, example in enumerate(examples)],
                 }
             ),
             encoding="utf-8",
         )
         return path
+
+    @staticmethod
+    def _complete(example: dict, index: int) -> dict:
+        return {
+            "personalization": "LOW",
+            "source": "MANUAL_REVIEWED",
+            "reviewStatus": "APPROVED",
+            "paraphraseGroup": f"group-{index}",
+            "createdAt": "2026-08-30T00:00:00+00:00",
+            "reviewedAt": "2026-08-30T00:01:00+00:00",
+            **example,
+        }
 
     def test_loads_response_envelope_and_deduplicates_identical_labels(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -58,21 +72,19 @@ class ReviewedDataTests(unittest.TestCase):
                     {
                         "data": {
                             "schemaVersion": REVIEWED_DATA_SCHEMA_VERSION,
-                            "examples": [
-                                {
+                            "examples": [self._complete({
                                     "id": "first",
                                     "question": "  Should I change jobs?  ",
                                     "locale": "EN",
                                     "domain": "CAREER",
                                     "intent": "CAREER_CHANGE_JOB",
-                                },
-                                {
+                                }, 0), self._complete({
                                     "id": "duplicate",
                                     "question": "Should I change jobs?",
                                     "locale": "en",
                                     "domain": "CAREER",
                                     "intent": "CAREER_CHANGE_JOB",
-                                },
+                                }, 1),
                             ],
                         }
                     }
@@ -86,7 +98,7 @@ class ReviewedDataTests(unittest.TestCase):
         self.assertEqual("Should I change jobs?", examples[0].question)
         self.assertEqual("en", examples[0].locale)
 
-    def test_rejects_domain_mismatch_personal_custom_and_conflicting_labels(self) -> None:
+    def test_rejects_domain_mismatch_unknown_intent_and_conflicting_labels(self) -> None:
         invalid_sets = (
             [
                 {
@@ -101,7 +113,7 @@ class ReviewedDataTests(unittest.TestCase):
                     "question": "Private question",
                     "locale": "en",
                     "domain": "GENERAL",
-                    "intent": "PERSONAL_CUSTOM",
+                    "intent": "NOT_IN_TAXONOMY",
                 }
             ],
             [
@@ -126,6 +138,59 @@ class ReviewedDataTests(unittest.TestCase):
                     path = self._write_dataset(directory, invalid_examples)
                     with self.assertRaises(ValueError):
                         load_reviewed_examples(path)
+
+    def test_rejects_missing_contract_fields_and_split_leakage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing.json"
+            missing.write_text(json.dumps({
+                "schemaVersion": REVIEWED_DATA_SCHEMA_VERSION,
+                "examples": [{"question": "Incomplete"}],
+            }), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_reviewed_examples(missing)
+
+            crossing = [
+                {
+                    "question": "Should I change jobs?", "locale": "en",
+                    "domain": "CAREER", "intent": "CAREER_CHANGE_JOB",
+                    "paraphraseGroup": "same-family", "split": "TRAIN",
+                },
+                {
+                    "question": "Is a new role right?", "locale": "en",
+                    "domain": "CAREER", "intent": "CAREER_CHANGE_JOB",
+                    "paraphraseGroup": "same-family", "split": "TEST",
+                },
+            ]
+            with self.assertRaises(ValueError):
+                load_reviewed_examples(self._write_dataset(directory, crossing))
+
+    def test_grouped_split_never_separates_a_paraphrase_family(self) -> None:
+        examples = [
+            ReviewedExample(f"Question {index}", "GENERAL_DIRECTION", "en",
+                            str(index), paraphrase_group=f"family-{index // 3}")
+            for index in range(30)
+        ]
+        splits = assign_grouped_splits(examples)
+        assignments = {
+            example.group: split
+            for split, rows in splits.items()
+            for example in rows
+        }
+        for split, rows in splits.items():
+            self.assertTrue(all(assignments[row.group] == split for row in rows))
+
+    def test_personal_custom_is_valid_reviewed_rejection_truth(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write_dataset(directory, [{
+                "question": "My work, debt, family and relationship all overlap.",
+                "locale": "en", "domain": "GENERAL", "intent": "PERSONAL_CUSTOM",
+                "personalization": "HIGH", "source": "HARD_NEGATIVE",
+                "paraphraseGroup": "rejection-1", "tags": ["REJECTION"],
+            }])
+            examples = load_reviewed_examples(path)
+
+        self.assertEqual("PERSONAL_CUSTOM", examples[0].intent)
+        self.assertEqual("HIGH", examples[0].personalization)
 
 
 class SemanticIndexTests(unittest.TestCase):
@@ -186,6 +251,48 @@ class ReviewedModelArtifactTests(unittest.TestCase):
         self.assertEqual(106, manifest["totalTrainingExampleCount"])
         self.assertEqual(self.model.reviewed_dataset_hash, manifest["reviewedDatasetHash"])
         self.assertNotIn("questions", manifest)
+        self.assertEqual("TAXONOMY_V1", manifest["taxonomyVersion"])
+        self.assertEqual(REVIEWED_DATA_SCHEMA_VERSION, manifest["trainingDataVersion"])
+        self.assertIsNotNone(manifest["buildTimestamp"])
+
+    def test_probability_calibration_uses_explicit_validation_split(self) -> None:
+        examples = []
+        for intent in INTENT_TO_DOMAIN:
+            for index in range(3):
+                examples.append(ReviewedExample(
+                    question=f"Held out calibration wording {index} for {intent}",
+                    intent=intent,
+                    locale="en",
+                    example_id=f"{intent}-{index}",
+                    paraphrase_group=f"calibration-{intent}-{index}",
+                    split="VALIDATION" if index < 2 else "TRAIN",
+                ))
+
+        model = ClassifierModel.train(examples)
+
+        self.assertTrue(model.calibrated)
+        prediction = model.predict("Could changing jobs be right?", "en")
+        self.assertGreaterEqual(prediction.confidence, 0.0)
+        self.assertLessEqual(prediction.confidence, 1.0)
+
+    def test_final_report_contains_locale_intent_subsets_and_calibration(self) -> None:
+        tagged = [
+            ReviewedExample(
+                question=f"Tagged final example {index}",
+                intent="GENERAL_DIRECTION",
+                locale="en" if index % 2 == 0 else "th",
+                example_id=str(index),
+                tags=(subset,),
+            )
+            for index, subset in enumerate(REQUIRED_SUBSETS)
+        ]
+        report = evaluate_model(self.model, tagged, ["GENERAL_DIRECTION"])
+
+        self.assertIn("acceptedPrecisionByIntent", report)
+        self.assertIn("acceptedCoverageByIntent", report)
+        self.assertIn("acceptedPrecisionByLocale", report)
+        self.assertIn("expectedCalibrationError", report)
+        self.assertEqual(set(REQUIRED_SUBSETS), set(report["subsetMetrics"]))
 
 
 if __name__ == "__main__":

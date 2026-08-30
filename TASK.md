@@ -1842,3 +1842,643 @@ Required browser QA:
 - [ ] Browser QA completed for desktop, mobile, keyboard, errors, STANDARD, and DEEP.
 - [ ] Screenshots or a short recording document the shuffle, waiting, and completed states.
 - [x] Relevant frontend behavior is summarized in `SUMMARY.md` after implementation.
+
+---
+
+# Next Task — Classifier Dataset Expansion and Confidence-Gated Reading Cache
+
+Status: **Implemented behind disabled gates; human review and rollout approval pending**
+
+## Goal
+
+Increase classifier coverage and precision before expanding shared finished-answer caching.
+
+After the classifier quality gate passes, add a cache-only wrapper that can reuse a reading when:
+
+- Classification confidence is strictly greater than `0.90`.
+- The classified domain and intent match.
+- Reading mode, spread, ordered card positions, card IDs, orientations, locale, and content versions match.
+- The request and generated response are safe for shared reuse.
+
+Different raw questions may reuse the same answer when all cache identity and safety conditions match. The raw question and user ID must not be part of the shared cache key.
+
+## Non-Negotiable DEEP Boundary
+
+This task must not change the existing `DEEP` generation pipeline on a cache miss.
+
+Preserve:
+
+- Backend premium-entitlement verification.
+- The exact raw question sent to the LLM.
+- Existing system and user prompt content.
+- Model-tier selection and inference routing.
+- Timeout, retry, failover, and concurrency behavior.
+- Structured-output validation and quality scoring.
+- The public request and response contracts.
+
+Classification is used only for cache eligibility and cache identity. Never add classifier domain, intent, confidence, personalization, card meanings, or rule-engine content to the `DEEP` LLM prompt.
+
+Required `DEEP` miss flow:
+
+```text
+Cache MISS or cache ineligible
+    → run the existing DEEP flow unchanged
+    → validate the LLM response
+    → evaluate whether the result is safe for shared reuse
+    → save only when eligible and safe
+    → return the original validated response
+```
+
+A cache infrastructure failure must fall through to the existing `DEEP` flow. Cache availability must not become a requirement for generating a reading.
+
+Until this task is implemented, evaluated, and explicitly enabled, the authoritative current `DEEP` behavior in `SUMMARY.md` remains unchanged.
+
+## Delivery Order
+
+Implement this task in two gated stages:
+
+```text
+Stage A — Dataset expansion, training, calibration, and evaluation
+    ↓ quality gate passes
+Stage B — Confidence-gated cache wrapper and monitored rollout
+```
+
+Do not enable Stage B merely because the model trains successfully. It must meet the evaluation and safety criteria below.
+
+---
+
+## Stage A — Expand the Classification Dataset
+
+### 1. Keep the Taxonomy Fixed
+
+Use the existing domain and intent taxonomy unless an explicit taxonomy migration is approved.
+
+Every dataset label must be validated against the C# and Python shared taxonomy. Unknown labels must fail dataset validation rather than silently becoming new production intents.
+
+Always retain:
+
+```text
+PERSONAL_CUSTOM
+```
+
+The classifier must be allowed to reject uncertain, mixed-domain, out-of-domain, and highly personalized questions. The goal is not to force every possible question into a reusable intent.
+
+### 2. Dataset Coverage
+
+Expand both English and Thai training data with:
+
+- Natural short and long questions.
+- Formal and informal wording.
+- Common spelling mistakes and incomplete grammar.
+- Thai colloquial wording.
+- Mixed Thai/English questions.
+- Multiple paraphrase families for every intent.
+- Questions that omit obvious domain keywords.
+- Questions containing misleading keywords.
+- Near-boundary examples between easily confused intents.
+- Multi-domain questions.
+- Out-of-domain questions.
+- Highly personalized questions.
+- Questions with names, employers, locations, dates, timelines, and financial amounts.
+- Adversarial examples that should become `PERSONAL_CUSTOM`.
+
+Initial dataset targets:
+
+```text
+Important intents:
+    300–500 reviewed examples per intent per locale
+
+Lower-volume intents:
+    100–200 reviewed examples per intent per locale
+
+PERSONAL_CUSTOM / uncertain / multi-domain / HIGH personalization:
+    at least 1,000 reviewed examples across supported locales
+```
+
+Synthetic examples may bootstrap coverage, but synthetic labels must not be treated as reviewed production truth. Track their source separately.
+
+### 3. Dataset Record Contract
+
+Each training example should contain at least:
+
+```text
+question
+locale
+domain
+intent
+personalization
+source
+reviewStatus
+paraphraseGroup
+createdAt
+reviewedAt
+```
+
+Recommended source values:
+
+```text
+SEED
+SYNTHETIC
+PRODUCTION_REVIEWED
+MANUAL_REVIEWED
+HARD_NEGATIVE
+```
+
+Do not store user identity, authentication data, or unrelated personal information. Remove or replace unnecessary names, contact details, and sensitive identifiers before a production question becomes training data.
+
+### 4. Review Workflow
+
+- Require human review before production examples enter the trusted training split.
+- Record both the original predicted label and reviewed label.
+- Support correcting domain, intent, and personalization independently.
+- Record reviewer time and model version for auditability.
+- Deduplicate exact and normalized questions.
+- Flag near-duplicates and paraphrases for grouped splitting.
+
+### 5. Train, Validation, and Test Splits
+
+Prevent evaluation leakage:
+
+- Split by `paraphraseGroup`, not by individual row.
+- Keep near-duplicates in the same split.
+- Keep a final test set that is never used for model or threshold tuning.
+- Stratify by intent, locale, personalization, and source where possible.
+- Include English, Thai, mixed-language, typo, boundary, and rejection subsets in the final test report.
+
+Recommended split:
+
+```text
+Training     70%
+Validation   15%
+Final test   15%
+```
+
+### 6. Model Training and Calibration
+
+Continue using the CPU classifier architecture unless evaluation proves it insufficient:
+
+```text
+TF-IDF
+    +
+Logistic Regression
+```
+
+Required training behavior:
+
+- Use deterministic random seeds.
+- Address class imbalance explicitly.
+- Tune only against the training and validation splits.
+- Calibrate returned probabilities using validation data.
+- Never calibrate against the final test set.
+- Export taxonomy version, training-data version, model version, metrics, and build timestamp with the artifact.
+- Keep the previous model artifact available for rollback.
+
+Confidence must represent observed correctness, not merely the classifier's uncalibrated maximum probability.
+
+### 7. Confidence Policy
+
+The new shared-cache threshold is:
+
+```text
+confidence > 0.90
+```
+
+The comparison is strict. A confidence value equal to `0.90` is not eligible.
+
+Make the threshold configurable:
+
+```json
+{
+  "Classifier": {
+    "MinimumSharedCacheConfidence": 0.90
+  }
+}
+```
+
+Recommended shared-cache safety policy:
+
+```text
+confidence > 0.90
+AND intent != PERSONAL_CUSTOM
+AND personalization != HIGH
+```
+
+`HIGH` personalization remains ineligible because the raw `DEEP` question may contain unique information that must not be shared with another user. This guard affects only shared-cache eligibility; it must not alter the generated response.
+
+### 8. Classifier Quality Gate
+
+Stage A passes only when the untouched final test set demonstrates:
+
+- At least `97%` precision among predictions accepted above `0.90` overall.
+- At least `95%` accepted precision for every intent enabled for shared caching.
+- Explicit per-locale precision and coverage reporting.
+- No severe confusion pair is hidden by aggregate accuracy.
+- `PERSONAL_CUSTOM` and `HIGH`-personalization rejection behavior is measured separately.
+- Confidence calibration error is reported.
+- A reviewed error analysis exists for false high-confidence predictions.
+
+If an intent misses the per-intent precision requirement, disable that intent from shared caching even if the global score passes.
+
+Coverage is important, but it must not be improved by lowering precision. Uncertain questions should continue to generate without shared-cache reuse.
+
+### 9. Classifier Metrics
+
+Track at least:
+
+```text
+classifier_requests_total
+classifier_accepted_total
+classifier_rejected_total
+classifier_fallback_total
+classifier_invalid_response_total
+classifier_confidence_distribution
+classifier_intent_distribution
+classifier_latency
+accepted_precision_by_intent
+accepted_precision_by_locale
+accepted_coverage_by_intent
+personal_custom_rejection_rate
+high_personalization_rejection_rate
+```
+
+Do not log raw questions in ordinary application metrics or logs.
+
+---
+
+## Stage B — Confidence-Gated Shared Cache Wrapper
+
+Stage B may begin only after Stage A passes and the approved model artifact is deployed.
+
+### 10. Cache Eligibility Flow
+
+For both reading modes, classification is a cache preflight only:
+
+```text
+Classify raw question
+    ↓
+confidence > 0.90?
+intent reusable?
+personalization safe?
+    ↓ YES
+Build shared cache key
+    ↓
+Redis lookup
+    ↓ MISS
+PostgreSQL lookup
+    ↓ MISS
+Generate through the existing mode-specific flow
+    ↓
+Validate response
+    ↓
+Shared-content safety check
+    ↓ SAFE
+Persist PostgreSQL + Redis
+```
+
+Ineligible requests skip the shared cache and continue through their existing mode-specific generation flow.
+
+### 11. Cache Key
+
+The shared cache key must include:
+
+```text
+cache schema version
+taxonomy version
+domain
+intent
+reading mode
+spread
+locale
+ordered position:cardId:orientation values
+prompt version
+interpretation version
+```
+
+For `DEEP`, also include:
+
+```text
+model tier
+generation model version
+```
+
+Do not include:
+
+```text
+raw question
+user ID
+session ID
+authentication claims
+```
+
+Card order must remain the request/spread order. Do not alphabetically sort cards.
+
+### 12. Shared DEEP Content Safety
+
+Confidence above `0.90` is necessary but is not sufficient to share a `DEEP` response.
+
+The current `DEEP` LLM receives the exact raw question and may reflect question-specific information in its answer. Before storing a `DEEP` result in the shared cache, reject shared persistence when the question or response contains non-reusable details such as:
+
+- Personal names or identifiable people.
+- Employer, company, school, or location names.
+- Exact dates, ages, durations, or timelines.
+- Specific financial amounts, account details, or unique purchases.
+- Unique relationship or family history.
+- Multiple combined life domains.
+- Direct quotation or close repetition of unique question text.
+- Other details that could expose one user's context to another user.
+
+This check must only decide whether to store the response. It must not rewrite, generalize, or change the response returned to the requesting user.
+
+If safety is uncertain:
+
+```text
+Return the generated response to the current user
+Do not save it to the shared cache
+```
+
+### 13. DEEP Cache Behavior
+
+Cache hit:
+
+```text
+Return the cached validated structured response
+Do not call the LLM
+Report CacheStatus.HIT
+```
+
+Cache miss:
+
+```text
+Run the current DEEP generation flow unchanged
+Wait for the complete LLM response
+Validate it using the existing validator
+Store only if classification and content are safe
+Return CacheStatus.MISS when stored
+Return CacheStatus.SKIPPED when not shareable
+```
+
+Classifier failure, timeout, invalid taxonomy output, or confidence `<= 0.90`:
+
+```text
+Run the current DEEP flow unchanged
+Do not read or write the shared cache
+Return CacheStatus.SKIPPED
+```
+
+### 14. Persistence and Stampede Protection
+
+- Reuse Redis for the fast runtime lookup.
+- Reuse PostgreSQL for persistent generated-answer storage.
+- Reuse the existing distributed lock per cache hash.
+- After acquiring the lock, check Redis and PostgreSQL again before generating.
+- Do not hold a lock for an ineligible request.
+- Set lock expiry above the maximum configured `DEEP` generation timeout.
+- Continue generating if Redis, PostgreSQL, or the lock service is unavailable.
+- Increment persistent and runtime hit counters only after a successful cache reuse.
+
+### 15. Cache Metrics
+
+Track separately by reading mode:
+
+```text
+cache_preflight_requests
+cache_preflight_eligible
+cache_preflight_rejected_confidence
+cache_preflight_rejected_personalization
+cache_preflight_rejected_intent
+cache_preflight_rejected_content_safety
+cache_hits
+cache_misses
+cache_store_success
+cache_store_failure
+cache_lookup_latency
+cache_hit_rate_among_eligible
+llm_requests_avoided
+```
+
+Classifier accepted coverage and cache hit rate are different metrics. A larger dataset may increase accepted coverage, while actual cache hit rate still depends on repeated intents, spreads, and card selections.
+
+### 16. Rollout
+
+Add a server-side feature flag for the new `DEEP` cache wrapper:
+
+```json
+{
+  "DeepSharedCache": {
+    "Enabled": false
+  }
+}
+```
+
+Recommended rollout:
+
+```text
+1. Shadow classification only; no DEEP cache reads or writes.
+2. Measure confidence, coverage, latency, and safety rejection.
+3. Enable writes without serving hits to build and inspect a candidate library.
+4. Human-review a sample of candidate shared responses.
+5. Enable cache reads for approved intents only.
+6. Expand gradually while monitoring wrong-reuse reports.
+```
+
+Disabling the flag must immediately restore the authoritative current `DEEP` behavior without requiring a deployment or data deletion.
+
+### 17. Startup Cache Warmup
+
+Warm approved cache entries automatically after the API server starts.
+
+Reuse and extend the existing `CacheWarmupService` and warmup job model. Do not create a second unrelated warmup pipeline.
+
+Startup behavior:
+
+```text
+API starts and becomes ready
+    → wait for a configurable startup delay
+    → acquire one distributed startup-warmup lock
+    → rehydrate current-version Redis entries from PostgreSQL
+    → enqueue approved missing warmup combinations
+    → generate with bounded background concurrency
+    → validate and persist through the normal cache services
+```
+
+The API must become ready before warmup work begins. Startup warmup must never block HTTP readiness, Swagger availability in Development, or normal reading requests.
+
+Recommended configuration:
+
+```json
+{
+  "StartupCacheWarmup": {
+    "Enabled": false,
+    "DelaySeconds": 15,
+    "RehydrateRedisFromPostgres": true,
+    "Locales": ["en", "th"],
+    "ReadingModes": ["STANDARD"],
+    "ApprovedIntents": [],
+    "Spreads": ["DAILY_1"],
+    "Variants": 1,
+    "MaxCombinationsPerStartup": 500,
+    "MaxConcurrency": 1,
+    "MaxDeepGenerationsPerStartup": 0,
+    "RetryCount": 2,
+    "RetryDelaySeconds": 10
+  }
+}
+```
+
+Requirements:
+
+- Keep startup warmup disabled by default until Stage A and the rollout gates pass.
+- Begin only after application startup and the configured delay.
+- Cancel promptly during application shutdown.
+- Use a Redis distributed lock so multiple API replicas do not run the same startup warmup simultaneously.
+- Make the process idempotent: check Redis and PostgreSQL before generating each combination.
+- Prefer PostgreSQL-to-Redis rehydration over regeneration when a current-version persistent answer already exists.
+- Use the same cache-key builder, validators, safety rules, persistence, TTL, and version policy as live traffic.
+- Process only approved intents, locales, spreads, modes, model tiers, and content versions.
+- Apply a hard per-start combination limit and bounded concurrency.
+- Yield capacity to live reading traffic; startup warmup must use the existing inference concurrency controls and must not bypass queue limits.
+- Record a warmup job that is visible through the existing admin warmup status endpoints.
+- A Redis, PostgreSQL, classifier, or LLM failure must be logged and counted without stopping the API.
+- Restarting the server must skip entries that are already warm and current.
+
+`STANDARD` warmup may generate approved deterministic rule-engine combinations.
+
+`DEEP` startup generation is disabled by default. It may be enabled only when all of the following are true:
+
+- Stage A passed.
+- `DeepSharedCache.Enabled` is true for writes.
+- The intent is approved for shared reads/writes.
+- A reviewed, `LOW`-personalization canonical warmup question exists for that locale and intent.
+- The generated response passes the same shared-content safety check as live traffic.
+- `MaxDeepGenerationsPerStartup` is greater than zero.
+
+The canonical warmup question is input for an offline cache seed only. It must not change the live `DEEP` prompt contract. Never synthesize arbitrary personal questions during startup.
+
+Warmup priority should be based on observed production demand:
+
+```text
+1. Current-version PostgreSQL answers missing from Redis
+2. Highest-hit approved DAILY_1 combinations
+3. Highest-hit approved three-card combinations
+4. Explicit admin-configured combinations
+```
+
+Do not attempt to pre-generate every three-card combination.
+
+Startup warmup metrics:
+
+```text
+startup_warmup_runs
+startup_warmup_lock_acquired
+startup_warmup_lock_contended
+startup_warmup_entries_examined
+startup_warmup_redis_rehydrated
+startup_warmup_entries_already_present
+startup_warmup_entries_generated
+startup_warmup_entries_rejected_safety
+startup_warmup_failures
+startup_warmup_duration
+startup_warmup_cancelled
+```
+
+---
+
+## Required Tests
+
+### Dataset and Classifier
+
+- [x] Dataset schema validation rejects missing or invalid labels.
+- [x] Exact and normalized duplicates are detected.
+- [x] Paraphrase groups cannot cross train/validation/test boundaries.
+- [x] English, Thai, mixed-language, typo, boundary, and rejection subsets are evaluated.
+- [x] Confidence calibration is tested against held-out validation data.
+- [x] The final test report includes accepted precision and coverage per intent and locale.
+- [x] Model artifacts include reproducible version metadata.
+
+### Cache Eligibility
+
+- [x] Confidence `0.9000` skips the shared cache.
+- [x] Confidence greater than `0.90` can become eligible.
+- [x] `PERSONAL_CUSTOM` skips the shared cache.
+- [x] `HIGH` personalization skips the shared cache.
+- [x] Classifier timeout, unavailable service, or invalid response skips the cache safely.
+- [x] Raw question and user ID do not affect or appear in the shared cache key.
+
+### Cache Identity
+
+- [x] Different wording with the same accepted intent and identical reading identity produces the same key.
+- [x] Different domain or intent produces a different key.
+- [x] Different reading mode produces a different key.
+- [x] Different spread produces a different key.
+- [x] Different locale produces a different key.
+- [x] Different card position, card ID, orientation, or order produces a different key.
+- [x] Different prompt, interpretation, taxonomy, model-tier, or generation-model version produces a different key where applicable.
+
+### DEEP Preservation
+
+- [x] Ineligible `DEEP` requests execute the existing flow unchanged.
+- [x] Eligible cache misses send the exact raw question through the existing prompt path.
+- [x] Classification output never enters the LLM prompt.
+- [x] A `DEEP` cache hit avoids the LLM.
+- [x] A safe validated `DEEP` miss is persisted and can be reused.
+- [x] A personalized or content-unsafe response is returned but not stored.
+- [x] Entitlement is verified before returning either a generated or cached `DEEP` response.
+- [x] Cache infrastructure failure falls through to the existing `DEEP` generation path.
+- [x] Concurrent identical eligible misses generate at most one shared answer.
+
+### Startup Warmup
+
+- [x] Startup warmup begins only after the API is ready and the configured delay expires.
+- [x] Startup warmup does not delay readiness or block normal HTTP requests.
+- [x] Only one API replica acquires the distributed startup-warmup lock.
+- [x] Current PostgreSQL entries rehydrate Redis without regeneration.
+- [x] Existing current-version cache entries are skipped idempotently.
+- [x] Warmup respects approved intents, locales, spreads, modes, versions, and hard limits.
+- [x] Warmup concurrency is bounded and uses the normal inference limiter.
+- [x] Shutdown cancels queued and active warmup work promptly.
+- [x] Infrastructure failure does not make the API unhealthy or unavailable.
+- [x] `DEEP` warmup remains disabled when `MaxDeepGenerationsPerStartup` is zero.
+- [x] `DEEP` warmup uses reviewed canonical questions and stores only content-safe responses.
+- [x] Startup-created jobs appear through the existing admin warmup status endpoints.
+
+### API and Documentation
+
+- [x] Existing request and response contracts remain compatible.
+- [x] Swagger UI and generated OpenAPI JSON remain aligned if HTTP contracts change.
+- [x] Cache status and error envelopes remain explicit shared response types.
+- [x] `SUMMARY.md` is updated only when rollout changes the authoritative runtime behavior.
+
+---
+
+## Acceptance Criteria
+
+- [ ] Dataset targets are met or documented per intent with an approved exception.
+- [ ] The untouched final test set passes the overall and per-intent precision gates.
+- [x] Confidence values are calibrated and the strict `> 0.90` policy is tested.
+- [x] Low-confidence, unknown, multi-domain, and highly personalized questions safely skip shared reuse.
+- [x] The cache key ignores raw wording while preserving every reading identity input.
+- [x] `DEEP` cache misses execute the current generation flow without prompt or routing changes.
+- [x] Shared `DEEP` persistence cannot expose unique question or response details to another user.
+- [x] Redis/PostgreSQL failures never prevent an otherwise valid reading.
+- [x] Cache stampede protection prevents duplicate eligible generation.
+- [x] Metrics distinguish classifier coverage, cache eligibility, cache hits, and LLM avoidance.
+- [x] Server startup automatically rehydrates and warms only approved cache entries without delaying readiness.
+- [x] Startup warmup is idempotent, distributed-lock protected, bounded, observable, and safe to cancel.
+- [x] The feature can be disabled immediately to restore current authoritative behavior.
+
+## Definition of Done
+
+- [ ] Bilingual reviewed dataset expanded and versioned.
+- [x] Leakage-safe train, validation, and final test splits created.
+- [ ] CPU classifier retrained and probability-calibrated.
+- [ ] Quality report and reviewed false-positive analysis completed.
+- [ ] Stage A quality gate passed.
+- [x] Cache-only wrapper implemented behind a disabled-by-default feature flag.
+- [x] Cache eligibility, identity, persistence, safety, and concurrency tests pass.
+- [x] Startup cache rehydration and warmup service implemented behind disabled-by-default configuration.
+- [x] Multi-replica locking, idempotency, limits, cancellation, failure, and warmup-status tests pass.
+- [x] Existing API tests pass.
+- [x] Swagger/OpenAPI verified if affected.
+- [ ] Shadow and write-only rollout observations reviewed.
+- [ ] Approved intents enabled gradually for cache reads.
+- [ ] `SUMMARY.md` updated after the authoritative runtime policy changes.

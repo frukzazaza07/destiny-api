@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using TarotDestiny.Api.Contracts;
 using TarotDestiny.Api.Domain;
 using TarotDestiny.Api.Services;
 
@@ -97,19 +98,55 @@ public sealed class CacheKeyBuilderTests
             builder.BuildRedisKey(deep, TestSupport.CareerChangeClassification()));
     }
 
+    [TestMethod]
+    public void DomainIntentSpreadAndTaxonomyPartitionCacheIdentity()
+    {
+        var request = TestSupport.DestinyRequest();
+        var career = TestSupport.CareerChangeClassification();
+        var love = new ClassificationResult(TarotDomain.LOVE, "LOVE_DECISION", 0.95, PersonalizationLevel.LOW);
+        var daily = request with
+        {
+            Spread = SpreadIds.Daily1,
+            Cards = [new("GUIDANCE", "THE_TOWER", Orientation.UPRIGHT)]
+        };
+        var first = NewBuilder(taxonomyVersion: "TAXONOMY_V1");
+        var taxonomyChanged = NewBuilder(taxonomyVersion: "TAXONOMY_V2");
+
+        Assert.AreNotEqual(first.BuildHash(request, career), first.BuildHash(request, love));
+        Assert.AreNotEqual(first.BuildHash(request, career), first.BuildHash(daily, career));
+        Assert.AreNotEqual(first.BuildHash(request, career), taxonomyChanged.BuildHash(request, career));
+    }
+
     private static CacheKeyBuilder NewBuilder(
         string promptVersion = "PROMPT_V1",
-        string interpretationVersion = "INTERPRETATION_V1") =>
+        string interpretationVersion = "INTERPRETATION_V1",
+        string taxonomyVersion = "TAXONOMY_V1") =>
         new(Options.Create(new TarotCacheOptions
         {
             PromptVersion = promptVersion,
-            InterpretationVersion = interpretationVersion
+            InterpretationVersion = interpretationVersion,
+            TaxonomyVersion = taxonomyVersion
         }));
 }
 
 [TestClass]
 public sealed class QuestionClassifierTests
 {
+    [TestMethod]
+    public void SharedCacheConfidenceThresholdIsStrict()
+    {
+        var classifier = TestSupport.NewClassifier(0.90);
+        var equal = new ClassificationResult(
+            TarotDomain.CAREER,
+            "CAREER_CHANGE_JOB",
+            0.90,
+            PersonalizationLevel.LOW);
+        var above = equal with { Confidence = 0.9001 };
+
+        Assert.IsFalse(classifier.CanUseSharedCache(equal));
+        Assert.IsTrue(classifier.CanUseSharedCache(above));
+    }
+
     [TestMethod]
     public void ChangeJobQuestionIsCacheEligible()
     {

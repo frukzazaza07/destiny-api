@@ -14,7 +14,10 @@ public sealed record ClassifierReviewDto(
     [param: Required] string Status,
     TarotDomain? Domain,
     [param: StringLength(100)] string? Intent,
-    [param: Range(0, int.MaxValue)] int ExpectedRevision);
+    [param: Range(0, int.MaxValue)] int ExpectedRevision,
+    PersonalizationLevel? Personalization = null,
+    [param: StringLength(100)] string? ParaphraseGroup = null,
+    [param: Range(0, 86400)] int? ReviewerTimeSeconds = null);
 
 public sealed record ClassifierTrainingExampleDto(
     Guid Id,
@@ -29,6 +32,9 @@ public sealed record ClassifierTrainingExampleDto(
     string ReviewStatus,
     string? ReviewedDomain,
     string? ReviewedIntent,
+    string? ReviewedPersonalization,
+    string? ParaphraseGroup,
+    int? ReviewerTimeSeconds,
     int Revision,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ReviewedAt);
@@ -41,5 +47,21 @@ public sealed record ClassifierTrainingPageDto(
 
 public sealed record ClassifierTaxonomyItemDto(string Domain, IReadOnlyList<string> Intents);
 public sealed record ClassifierTaxonomyDto(IReadOnlyList<ClassifierTaxonomyItemDto> Domains);
-public sealed record ReviewedClassifierExampleDto(Guid Id, string Question, string Locale, string Domain, string Intent);
+public sealed record ReviewedClassifierExampleDto(
+    Guid Id,
+    string Question,
+    string Locale,
+    string Domain,
+    string Intent,
+    string Personalization,
+    string Source,
+    string ReviewStatus,
+    string ParaphraseGroup,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ReviewedAt,
+    string PredictedDomain,
+    string PredictedIntent,
+    string PredictedPersonalization,
+    string? PredictedModelVersion,
+    int? ReviewerTimeSeconds);
 public sealed record ReviewedClassifierExportDto(string SchemaVersion, IReadOnlyList<ReviewedClassifierExampleDto> Examples);

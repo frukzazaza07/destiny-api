@@ -41,6 +41,15 @@ public sealed record PersistentCacheAnalytics(
     long TotalHits,
     IReadOnlyList<GeneratedAnswerSummary> MostUsed);
 
+public sealed record PersistedAnswerCacheEntry(
+    string CacheHash,
+    CachedAnswerSet Answers,
+    string Intent = "",
+    string Locale = "",
+    string ReadingMode = "",
+    string SpreadId = "",
+    string? ModelVersion = null);
+
 public interface IGeneratedAnswerStore
 {
     Task<CachedAnswerSet?> FindAsync(string cacheHash, CancellationToken cancellationToken);
@@ -48,6 +57,13 @@ public interface IGeneratedAnswerStore
     Task IncrementHitCountAsync(string cacheHash, CancellationToken cancellationToken);
     Task<PersistentCacheAnalytics> GetAnalyticsAsync(int top, CancellationToken cancellationToken);
     IAsyncEnumerable<GeneratedAnswerSummary> EnumerateAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<PersistedAnswerCacheEntry>> LoadCurrentEntriesAsync(
+        string cacheVersion,
+        string promptVersion,
+        string interpretationVersion,
+        int maximumEntries,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PersistedAnswerCacheEntry>>([]);
 }
 
 public sealed class NullGeneratedAnswerStore : IGeneratedAnswerStore
@@ -235,6 +251,45 @@ public sealed class PostgresGeneratedAnswerStore(
         {
             yield return answer;
         }
+    }
+
+    public async Task<IReadOnlyList<PersistedAnswerCacheEntry>> LoadCurrentEntriesAsync(
+        string cacheVersion,
+        string promptVersion,
+        string interpretationVersion,
+        int maximumEntries,
+        CancellationToken cancellationToken)
+    {
+        maximumEntries = Math.Clamp(maximumEntries, 1, 10_000);
+        var entities = await dbContext.GeneratedAnswers
+            .AsNoTracking()
+            .Include(answer => answer.Variants)
+            .Where(answer =>
+                answer.CacheVersion == cacheVersion &&
+                answer.PromptVersion == promptVersion &&
+                answer.InterpretationVersion == interpretationVersion)
+            .OrderByDescending(answer => answer.HitCount)
+            .ThenByDescending(answer => answer.UpdatedAt ?? answer.CreatedAt)
+            .Take(maximumEntries)
+            .ToArrayAsync(cancellationToken);
+
+        return entities
+            .Select(entity => new PersistedAnswerCacheEntry(
+                entity.CacheHash,
+                new CachedAnswerSet(entity.Variants
+                    .OrderBy(variant => variant.VariantNumber)
+                    .Select(variant => new CachedAnswerVariant(
+                        variant.VariantNumber,
+                        JsonSerializer.Deserialize<TarotReadingResponse>(variant.ResponseJson, JsonOptions)
+                            ?? throw new InvalidOperationException($"Stored answer variant {variant.Id} is invalid.")))
+                    .ToArray()),
+                entity.Intent,
+                entity.Locale,
+                entity.ReadingMode,
+                entity.SpreadId,
+                entity.ModelVersion))
+            .Where(entry => entry.Answers.Variants.Count > 0)
+            .ToArray();
     }
 
 }

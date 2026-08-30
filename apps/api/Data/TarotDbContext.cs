@@ -144,6 +144,12 @@ public sealed class TarotDbContext(DbContextOptions<TarotDbContext> options) : D
                 table.HasCheckConstraint("ck_tarot_training_confidence", "predicted_confidence >= 0 AND predicted_confidence <= 1");
                 table.HasCheckConstraint("ck_tarot_training_review_status", "review_status IN ('PENDING', 'APPROVED', 'REJECTED')");
                 table.HasCheckConstraint("ck_tarot_training_revision", "revision >= 0");
+                table.HasCheckConstraint(
+                    "ck_tarot_training_reviewed_personalization",
+                    "reviewed_personalization IS NULL OR reviewed_personalization IN ('LOW', 'MEDIUM', 'HIGH')");
+                table.HasCheckConstraint(
+                    "ck_tarot_training_reviewer_time",
+                    "reviewer_time_seconds IS NULL OR reviewer_time_seconds >= 0");
             });
             entity.HasKey(example => example.Id).HasName("pk_tarot_question_classification_training");
             entity.Property(example => example.Id).HasColumnName("id").ValueGeneratedNever();
@@ -159,6 +165,9 @@ public sealed class TarotDbContext(DbContextOptions<TarotDbContext> options) : D
             entity.Property(example => example.ReviewStatus).HasColumnName("review_status").HasMaxLength(20).IsRequired();
             entity.Property(example => example.ReviewedDomain).HasColumnName("reviewed_domain").HasMaxLength(50);
             entity.Property(example => example.ReviewedIntent).HasColumnName("reviewed_intent").HasMaxLength(100);
+            entity.Property(example => example.ReviewedPersonalization).HasColumnName("reviewed_personalization").HasMaxLength(20);
+            entity.Property(example => example.ParaphraseGroup).HasColumnName("paraphrase_group").HasMaxLength(100);
+            entity.Property(example => example.ReviewerTimeSeconds).HasColumnName("reviewer_time_seconds");
             entity.Property(example => example.ConsentVersion).HasColumnName("consent_version").HasMaxLength(50).IsRequired();
             entity.Property(example => example.Revision).HasColumnName("revision").HasDefaultValue(0).IsRequired();
             entity.Property(example => example.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();

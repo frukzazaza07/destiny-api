@@ -37,7 +37,7 @@ public sealed partial class ClassifierTrainingStore(
     IQuestionClassifier classifier,
     IOptions<ClassifierTrainingOptions> options) : IClassifierTrainingStore
 {
-    public const string ExportSchemaVersion = "tarot-classifier-reviewed-v1";
+    public const string ExportSchemaVersion = "tarot-classifier-dataset-v2";
     private readonly ClassifierTrainingOptions _options = options.Value;
 
     public async Task<ClassifierTrainingSubmissionResultDto> SubmitAsync(
@@ -145,18 +145,26 @@ public sealed partial class ClassifierTrainingStore(
         var status = NormalizeStatus(review.Status);
         string? domain = null;
         string? intent = null;
+        string? reviewedPersonalization = null;
         if (status == "APPROVED")
         {
             domain = review.Domain?.ToString()
                 ?? throw new ArgumentException("Approved examples require a reviewed domain.");
             intent = review.Intent?.Trim().ToUpperInvariant();
-            if (string.IsNullOrWhiteSpace(intent) || intent == TarotIntents.PersonalCustom ||
+            reviewedPersonalization = review.Personalization?.ToString();
+            if (string.IsNullOrWhiteSpace(intent) ||
                 !TarotIntents.All.Contains(intent, StringComparer.Ordinal))
             {
                 throw new ArgumentException("Approved examples require a reusable taxonomy intent.");
             }
 
-            if (!intent.StartsWith($"{domain}_", StringComparison.Ordinal) &&
+            if (intent == TarotIntents.PersonalCustom && domain != nameof(TarotDomain.GENERAL))
+            {
+                throw new ArgumentException("PERSONAL_CUSTOM must use the GENERAL domain.");
+            }
+
+            if (intent != TarotIntents.PersonalCustom &&
+                !intent.StartsWith($"{domain}_", StringComparison.Ordinal) &&
                 !(domain == nameof(TarotDomain.PERSONAL_GROWTH) && intent.StartsWith("PERSONAL_GROWTH_", StringComparison.Ordinal)))
             {
                 throw new ArgumentException("The reviewed intent does not belong to the reviewed domain.");
@@ -169,6 +177,10 @@ public sealed partial class ClassifierTrainingStore(
                 .SetProperty(example => example.ReviewStatus, status)
                 .SetProperty(example => example.ReviewedDomain, domain)
                 .SetProperty(example => example.ReviewedIntent, intent)
+                .SetProperty(example => example.ReviewedPersonalization, reviewedPersonalization)
+                .SetProperty(example => example.ParaphraseGroup,
+                    status == "APPROVED" ? review.ParaphraseGroup : null)
+                .SetProperty(example => example.ReviewerTimeSeconds, review.ReviewerTimeSeconds)
                 .SetProperty(example => example.ReviewedAt, DateTimeOffset.UtcNow)
                 .SetProperty(example => example.Revision, example => example.Revision + 1),
                 cancellationToken);
@@ -192,19 +204,30 @@ public sealed partial class ClassifierTrainingStore(
 
     public async Task<ReviewedClassifierExportDto> ExportApprovedAsync(CancellationToken cancellationToken)
     {
-        var examples = await dbContext.ClassifierTrainingExamples
+        var entities = await dbContext.ClassifierTrainingExamples
             .AsNoTracking()
             .Where(example => example.ReviewStatus == "APPROVED")
             .OrderBy(example => example.Locale)
             .ThenBy(example => example.ReviewedIntent)
             .ThenBy(example => example.QuestionHash)
-            .Select(example => new ReviewedClassifierExampleDto(
-                example.Id,
-                example.Question,
-                example.Locale,
-                example.ReviewedDomain!,
-                example.ReviewedIntent!))
             .ToArrayAsync(cancellationToken);
+        var examples = entities.Select(example => new ReviewedClassifierExampleDto(
+            example.Id,
+            example.Question,
+            example.Locale,
+            example.ReviewedDomain!,
+            example.ReviewedIntent!,
+            example.ReviewedPersonalization ?? example.PredictedPersonalization,
+            "PRODUCTION_REVIEWED",
+            example.ReviewStatus,
+            example.ParaphraseGroup ?? example.Id.ToString("N"),
+            example.CreatedAt,
+            example.ReviewedAt!.Value,
+            example.PredictedDomain,
+            example.PredictedIntent,
+            example.PredictedPersonalization,
+            example.ClassifierModelVersion,
+            example.ReviewerTimeSeconds)).ToArray();
         return new ReviewedClassifierExportDto(ExportSchemaVersion, examples);
     }
 
@@ -212,7 +235,8 @@ public sealed partial class ClassifierTrainingStore(
         example.Id, example.Question, example.Locale, example.PredictedDomain,
         example.PredictedIntent, example.PredictedConfidence, example.PredictedPersonalization,
         example.ClassifierSource, example.ClassifierModelVersion, example.ReviewStatus,
-        example.ReviewedDomain, example.ReviewedIntent, example.Revision,
+        example.ReviewedDomain, example.ReviewedIntent, example.ReviewedPersonalization,
+        example.ParaphraseGroup, example.ReviewerTimeSeconds, example.Revision,
         example.CreatedAt, example.ReviewedAt);
 
     private static string NormalizeQuestion(string question) =>
