@@ -13,11 +13,404 @@ Another developer or AI agent should read this file **before** reading `TASK.md`
 - How Tarot readings are generated
 - How LLM inference is used
 - Why caching is important
-- How question classification improves cache reuse
+- How question classification improves STANDARD-mode cache reuse
 - How the personal GPU computer fits into the system
 - Recommended infrastructure and tech stack
 
 Detailed implementation work belongs in `TASK.md`.
+
+---
+
+# Frontend Reading Journey Update (2026-08-30)
+
+The main reading page now uses an explicit interaction phase instead of a shared `busy` boolean:
+
+```text
+IDLE → SHUFFLING → SELECTING → RESOLVING → GENERATING → REVEALING → COMPLETE
+```
+
+Network failures enter `ERROR` with a retry scoped to the failed shuffle, resolve, or generation step. The implementation preserves the question and settings, keeps selected indexes after a resolve failure, and keeps resolved cards visible after a generation failure.
+
+Current frontend behavior:
+
+- Shuffle requests run alongside a staged `MIXING → SETTLING → DEALING` sequence. After the real session is ready, the motion visibly decelerates into one stack. Cards then peel from the top one at a time, lift through a shallow natural arc, rotate with their travel direction, and land flat in the responsive grid; slow requests remain in the mixing treatment until the backend responds.
+- Selection shows gold lift/glow feedback and the selection order (`1`, `2`, `3`) while retaining button, focus, disabled, and `aria-pressed` semantics.
+- Resolve and generation replace the full deck with the selected cards in spread positions. Localized English/Thai status text is exposed through one polite live region, and the reading region uses `aria-busy` during network work.
+- `STANDARD` has a 300 ms minimum generation treatment to prevent a flash. `DEEP` uses the same stable, bounded loader without growing particles, timers, or DOM content.
+- Successful responses enter the DOM immediately in `REVEALING`, flip in spread order, then reveal summary and insights. Reversed orientation is represented by the card treatment without implying a negative meaning.
+- Completed-reading focus moves to the result heading and scrolls only when needed.
+- Resetting or changing settings aborts the active request and increments a flow version, preventing obsolete responses or timers from overwriting a newer reading.
+- `prefers-reduced-motion: reduce` removes shuffle travel, looping effects, stagger, and 3D flips. State completion uses cleaned-up timers rather than animation events.
+- Existing request bodies and the backend `STANDARD`/`DEEP` boundaries are unchanged.
+
+Verification completed:
+
+```text
+apps/web: npm run typecheck → passed
+apps/web: npm run build     → passed (Next.js 16.3.2)
+```
+
+Live browser QA and screenshots remain pending because the in-app browser was unavailable in the implementation session.
+
+---
+
+# สรุปภาษาไทย — สถานะระบบที่ใช้งานจริง (อ่านส่วนนี้ก่อน)
+
+ส่วนนี้คือคำอธิบายภาษาไทยของพฤติกรรมปัจจุบันของ `/api/readings/generate` หลังจากแก้ไขในรอบงานวันที่ 2026-08-30 หากข้อความเก่าในเอกสารส่วนอื่นขัดแย้งกับส่วนนี้ ให้ยึดส่วนนี้และหัวข้อภาษาอังกฤษ `Authoritative Current State` เป็นหลัก
+
+## ภาพรวม STANDARD กับ DEEP
+
+| พฤติกรรม | `STANDARD` | `DEEP` |
+|---|---|---|
+| สิทธิ์ Premium | ไม่ต้องใช้ | ต้องมี และ API เป็นผู้ตรวจสอบ |
+| Question Classifier | ใช้ | ข้ามทั้งหมด ไม่เรียกใช้งาน |
+| Shared Generated-Answer Cache | ใช้เมื่อผล classification ผ่านเงื่อนไข | ข้ามทั้งหมด |
+| ส่งคำถามดิบไป LLM | ไม่ส่ง เพราะไม่เรียก LLM | ส่งทุกครั้ง |
+| ส่งความหมายไพ่จากระบบไป LLM | ไม่ส่ง เพราะไม่เรียก LLM | ไม่ส่ง |
+| วิธีสร้างคำตอบ | Rule Engine | Full LLM ตาม model tier ที่ตั้งค่าไว้ |
+
+แนวคิดหลักคือ:
+
+```text
+STANDARD = เร็ว สม่ำเสมอ ใช้ rule และ cache ได้
+
+DEEP = ประสบการณ์ Premium ที่ให้ Full LLM
+       อ่านคำถามจริงของผู้ใช้กับไพ่ที่เลือกโดยตรง
+```
+
+DEEP ต้องไม่ถูกลดรายละเอียดของคำถามให้เหลือเพียง intent เช่น `CAREER_CHANGE_JOB` และต้องไม่นำคำตอบที่สร้างให้คำถามของผู้ใช้อื่นมาใช้ซ้ำ
+
+## Flow จริงของ DEEP
+
+```text
+POST /api/readings/generate
+        |
+        v
+ตรวจสอบสิทธิ์ Premium
+        |
+        v
+ข้าม Question Classifier
+        |
+        v
+ข้าม Redis/PostgreSQL Generated-Answer Cache
+        |
+        v
+ส่งคำถามดิบ + ไพ่ที่เลือก ไปยัง Full LLM
+        |
+        v
+ตรวจ JSON schema ภาษา ลำดับไพ่ และตัวตนของไพ่
+        |
+        v
+คืนคำตอบ DEEP โดย CacheStatus = SKIPPED
+```
+
+ทุกคำขอ DEEP จึงเรียก Full LLM ใหม่เสมอ แม้คำถาม ไพ่ และ `answerVariant` จะเหมือนคำขอก่อนหน้า
+
+## ข้อมูลที่ส่งใน user role ของ LLM
+
+ส่งเพียงสอง property ระดับบนสุด คือ `question` และ `cards`:
+
+```json
+{
+  "question": "ฉันควรเปลี่ยนงานหรือไม่?",
+  "cards": [
+    {
+      "position": "PAST",
+      "cardId": "THE_TOWER",
+      "orientation": "UPRIGHT"
+    },
+    {
+      "position": "PRESENT",
+      "cardId": "THE_MAGICIAN",
+      "orientation": "UPRIGHT"
+    },
+    {
+      "position": "DIRECTION",
+      "cardId": "THE_STAR",
+      "orientation": "UPRIGHT"
+    }
+  ]
+}
+```
+
+ในแต่ละใบส่งเพียง:
+
+```text
+position
+cardId
+orientation
+```
+
+ห้ามเพิ่มข้อมูลต่อไปนี้กลับเข้าไปใน user role ของ DEEP:
+
+```text
+classification
+domain / intent
+rule interpretation payload
+ชื่อไพ่ (cardName)
+ความหมายไพ่หรือบทสรุปความหมาย
+keywords ของความหมาย
+domain meaning
+mainTheme / opportunity / challenge / guidance ที่ระบบสร้างไว้ก่อน
+```
+
+คำสั่งเรื่องภาษา ความปลอดภัย รูปแบบ JSON และ response schema ยังคงอยู่ใน system/API configuration ตามปกติ Backend ยังสามารถใช้ payload ภายในสำหรับกำหนด schema ตรวจจำนวนไพ่ ตรวจลำดับไพ่ parse คำตอบ และวัดคุณภาพได้ แต่ห้าม serialize payload นั้นเข้าไปใน user-role prompt
+
+## ทำไมไม่ส่งความหมายไพ่ให้ DEEP
+
+รอบแรกของการแก้ไขได้ส่ง:
+
+```text
+คำถามดิบ
++ ไพ่ที่เลือก
++ ความหมายไพ่แบบ structured
+```
+
+วิธีนี้ทำงานทางเทคนิคและผ่าน test แต่คุณภาพเนื้อหายังไม่ลึกพอ เพราะความหมายไพ่ในระบบเป็นบทสรุประดับกลางที่ถูกย่อไว้แล้ว เมื่อส่งให้ Full LLM โมเดลจึงยึดข้อความเหล่านั้นเป็นกรอบ และมักทำเพียงการเรียบเรียงความหมายทั่วไป แทนที่จะวิเคราะห์ความสัมพันธ์ระหว่างคำถามจริงกับไพ่อย่างลึกซึ้ง
+
+วิธีสุดท้ายจึงส่งเฉพาะคำถามจริงและข้อมูลการเลือกไพ่ แล้วสั่งให้ Full LLM ใช้ความรู้ Tarot ของโมเดลเอง โดยพิจารณา:
+
+- สัญลักษณ์และแก่นความหมายของไพ่
+- ไพ่ตั้งตรงหรือกลับหัว
+- ตำแหน่งใน spread
+- ความสัมพันธ์กับไพ่ใบอื่น
+- รายละเอียดและบริบทในคำถามจริงของผู้ใช้
+
+เป้าหมายคือให้คำอธิบายแต่ละใบเฉพาะเจาะจงกับคำถาม ไม่ใช่คำจำกัดความไพ่ทั่วไป
+
+ข้อแลกเปลี่ยนคือคำตอบ DEEP อาจมีความหลากหลายมากขึ้นและพึ่งความรู้ภายในของโมเดลมากขึ้น จึงต้องคง JSON schema, safety prompt, language validation, card identity validation และ quality scorer ไว้เสมอ
+
+## Metadata เมื่อข้าม Classifier
+
+Response contract เดิมกำหนดให้มี `classification` จึงใช้ค่าที่บอกตามตรงว่าไม่ได้ classify:
+
+```text
+classification.domain         = GENERAL
+classification.intent         = UNCLASSIFIED
+classification.confidence     = 0
+classification.source         = DEEP_DIRECT
+classification.decisionMethod = CLASSIFIER_BYPASSED
+cacheStatus                   = SKIPPED
+cacheKey                      = null
+```
+
+ข้อมูลนี้เป็น metadata ใน response เท่านั้น ไม่ถูกส่งให้ LLM ใน user role
+
+## สิ่งที่ทำงานสำเร็จ
+
+- ตรวจ `ReadingMode.DEEP` ก่อนเรียก `IQuestionClassifier` ทำให้ DEEP ไม่เรียก classifier model จริง
+- DEEP ข้ามทั้ง Redis cache และ persistent generated-answer store ใน PostgreSQL
+- เก็บคำถามดิบไว้ทุกครั้งที่เรียก LLM ไม่มีการแทนด้วย `null`
+- user-role prompt มีเพียง `question` และ `cards`
+- แต่ละ card มีเพียง `position`, `cardId`, `orientation`
+- Full LLM ใช้ความรู้ Tarot ของตัวเองแทนบทสรุปความหมายระดับกลางจากระบบ
+- Premium access policy, model routing, worker failover, retry, timeout, concurrency gate และ cloud privacy policy ยังทำงาน
+- JSON schema, parser, language validation, card-order validation และ quality scorer ยังทำงาน
+- STANDARD ยังคงใช้ classifier, rule renderer, cache, persistence และ cache lock เหมือนเดิม
+
+## สิ่งที่ลองแล้วไม่ตอบโจทย์ หรือถูกแทนที่
+
+- การ classify คำถาม DEEP ทำให้คำถาม Premium ถูกลดเหลือ intent กว้างเกินไป จึงยกเลิก
+- การตัด raw question ออกจาก LLM เมื่อ cache ได้ ทำให้คำตอบไม่ตรงบริบท จึงยกเลิก
+- การ reuse คำตอบ DEEP จาก cache อาจนำคำตอบของคำถามหนึ่งไปใช้กับอีกคำถาม จึงยกเลิก
+- การส่ง classification และ interpretation payload ทั้งก้อนไป LLM ทำให้ข้อสรุปจากโมเดลเล็ก/rule engine ครอบ Full LLM จึงยกเลิก
+- การส่ง card meaning แบบย่อผ่าน test แต่คำตอบยังเป็นระดับกลางและทั่วไป จึงนำออก
+- การรัน `dotnet test` แบบปกติครั้งแรกไม่สำเร็จ เพราะ API ที่กำลังทำงาน lock ไฟล์ `apps/api/bin/Debug/net9.0/TarotDestiny.Api.dll` นี่เป็นปัญหาไฟล์ output ถูกใช้งาน ไม่ใช่ code failure เมื่อตั้ง `BaseOutputPath` แยกแล้ว test ผ่าน
+
+## ผลการตรวจสอบ
+
+```text
+Passed: 71
+Failed: 0
+Skipped: 0
+```
+
+Test ครอบคลุมว่า:
+
+- DEEP ไม่เรียก classifier
+- DEEP ทุก request เรียก LLM และส่ง raw question
+- DEEP ไม่อ่าน เขียน หรือ reuse generated-answer cache
+- DEEP คืน `CacheStatus.SKIPPED` และไม่มี cache key
+- user content มีเฉพาะ `question` กับ `cards`
+- card ไม่มี `cardName`, `meaning`, `keywords`, classification หรือ payload
+- คำขอ DEEP ที่ซ้ำหรือมาพร้อมกันไม่ถูกรวมเป็นคำตอบ cache เดียว
+- พฤติกรรม cache และ persistence ของ STANDARD ยังผ่าน test
+
+## กฎสำหรับการแก้ไขในอนาคต
+
+1. ห้ามเพิ่ม classifier กลับเข้า flow ของ DEEP
+2. ห้าม cache หรือ persist shared generated answer ของ DEEP
+3. ห้ามลบหรือแทน raw question ก่อนเรียก Full LLM
+4. ห้ามส่ง card meaning, card name, classification หรือ rule payload ใน user role
+5. ต้องรักษา card position, id, orientation และลำดับเดิม
+6. ต้องตรวจ premium entitlement ที่ backend เสมอ
+7. ต้องคง structured output validation และ safety rules
+8. หากต้องการเพิ่ม context ให้ประเมินก่อนว่าจะกลายเป็นกรอบที่ลดความลึกของ Full LLM หรือไม่
+
+---
+
+# 0. Authoritative Current State — DEEP Reading Update (2026-08-30)
+
+This section records the completed `/api/readings/generate` work from the current implementation session. It supersedes older recommendations elsewhere in this document wherever they conflict with the behavior below.
+
+## Final Mode Boundary
+
+| Behavior | `STANDARD` | `DEEP` |
+|---|---|---|
+| Premium entitlement | Not required | Required and enforced by the API |
+| Question classifier | Used | Bypassed completely |
+| Shared generated-answer cache | Used when classification is eligible | Always skipped |
+| Raw question sent to LLM | No LLM call | Always |
+| Card master meanings sent to LLM | No LLM call | Never |
+| Generation | Rule renderer | Full configured LLM |
+
+The purpose of `DEEP` is now a genuinely question-specific premium reading. It must not be reduced to a reusable classified intent or a cached response created for another user's wording.
+
+## Final DEEP Request Flow
+
+```text
+POST /api/readings/generate
+        |
+        v
+Verify premium entitlement
+        |
+        v
+Bypass question classifier
+        |
+        v
+Skip Redis/PostgreSQL generated-answer cache
+        |
+        v
+Send raw question + selected cards to full LLM
+        |
+        v
+Validate structured JSON and card identity/order
+        |
+        v
+Return DEEP response with CacheStatus.SKIPPED
+```
+
+The response uses explicit metadata to show that classification was not performed:
+
+```text
+classification.source         = DEEP_DIRECT
+classification.decisionMethod = CLASSIFIER_BYPASSED
+classification.intent         = UNCLASSIFIED
+cacheStatus                   = SKIPPED
+cacheKey                      = null
+```
+
+This internal marker preserves the existing non-null API response contract without pretending that a classifier model produced a result. It is not included in the LLM user message.
+
+## Exact DEEP User-Role Content
+
+The LLM user-role message contains exactly two top-level properties:
+
+```json
+{
+  "question": "Should I change my job?",
+  "cards": [
+    {
+      "position": "PAST",
+      "cardId": "THE_TOWER",
+      "orientation": "UPRIGHT"
+    },
+    {
+      "position": "PRESENT",
+      "cardId": "THE_MAGICIAN",
+      "orientation": "UPRIGHT"
+    },
+    {
+      "position": "DIRECTION",
+      "cardId": "THE_STAR",
+      "orientation": "UPRIGHT"
+    }
+  ]
+}
+```
+
+Do not add any of the following to the DEEP user-role message:
+
+```text
+classification
+intent/domain
+rule interpretation payload
+card name
+card meaning or summary
+meaning keywords
+domain meaning
+pre-generated theme, opportunity, challenge, or guidance
+```
+
+Locale instructions, safety rules, JSON-only requirements, and the response schema remain in the system/API request configuration. Card count and identity are still constrained by the structured response schema and validated after generation.
+
+## Why Card Meanings Are Intentionally Excluded From DEEP
+
+The first implementation in this session sent the raw question plus selected cards and structured card meanings. It was technically valid and passed tests, but the content quality was not deep enough. The supplied meanings were already condensed, medium-depth summaries, so they anchored the full model to generic synthesis instead of letting it reason deeply about the exact user question.
+
+The final implementation sends only the question and card selection. The full LLM is instructed to use its own established Tarot knowledge, orientation, spread position, surrounding-card relationships, and the user's precise context. Each card interpretation must be detailed and question-specific rather than a generic definition.
+
+This is an intentional exception to the general rule-engine architecture used by `STANDARD` mode:
+
+```text
+STANDARD: application master meanings decide the interpretation.
+DEEP: the full LLM interprets the selected cards directly against the raw question.
+```
+
+## What Worked
+
+- Checking `ReadingMode.DEEP` before invoking `IQuestionClassifier` successfully removes the classifier-model call.
+- Skipping shared and persistent generated-answer caches guarantees that every DEEP request reaches the full LLM with its own raw question.
+- Sending only `question` and `cards` keeps classifier and rule-engine output out of the user prompt.
+- Restricting every card object to `position`, `cardId`, and `orientation` removes prewritten meaning anchors.
+- The existing JSON schema, parser, response validator, language validation, quality scorer, retry/failover routing, concurrency gate, and premium access policy remain active.
+- `STANDARD` classification, rule rendering, caching, persistence, and cache locking remain unchanged.
+
+## What Did Not Work or Was Replaced
+
+- Classifying DEEP questions before generation was replaced because premium users should receive the full-model experience, not an intent-reduced reading.
+- Removing the raw question on cache-eligible DEEP requests was replaced because it made the reading generic.
+- Reusing cached DEEP responses was replaced because a response for one classified intent could ignore the current user's exact wording and context.
+- Sending the complete interpretation payload was rejected because it exposed classifier/rule-engine conclusions to the LLM.
+- Sending condensed card meanings was tried and then removed because the output remained medium-depth rather than deeply tied to the user question.
+- The first normal `dotnet test` verification attempt could not overwrite `apps/api/bin/Debug/net9.0/TarotDestiny.Api.dll` because a running API process had locked that file. This was an environment/build-output lock, not a code failure. Running the same suite with an isolated `BaseOutputPath` succeeded.
+
+## Files Updated In This Session
+
+```text
+apps/api/Contracts/ReadingContracts.cs
+apps/api/Services/TarotReadingService.cs
+apps/api/Services/LlmClient.cs
+tests/TarotDestiny.Api.Tests/LlmClientTests.cs
+tests/TarotDestiny.Api.Tests/ReadingGenerationTests.cs
+tests/TarotDestiny.Api.Tests/AdvancedCacheAndInferenceTests.cs
+tests/TarotDestiny.Api.Tests/GeneratedAnswerPersistenceTests.cs
+tests/TarotDestiny.Api.Tests/TestSupport.cs
+SUMMARY.md
+```
+
+`docker-compose.yml` already had a separate working-tree modification and was not changed as part of this request.
+
+## Verification
+
+The final automated result is:
+
+```text
+Passed: 71
+Failed: 0
+Skipped: 0
+```
+
+Regression coverage verifies that:
+
+- DEEP does not invoke classifier methods.
+- Every DEEP request calls the LLM and retains its raw question.
+- DEEP returns `CacheStatus.SKIPPED` with no cache key.
+- The LLM user content has only `question` and `cards` at the top level.
+- Each card has only `position`, `cardId`, and `orientation`.
+- No classification, full payload, card name, or card meaning is present.
+- Concurrent and repeated DEEP requests are not collapsed into shared cached responses.
+- STANDARD cache and persistence behavior continues to pass.
 
 ---
 
@@ -188,7 +581,7 @@ rather than relying only on browser-side random selection.
 
 # 6. Tarot Knowledge Base
 
-Do not rely on the LLM to invent Tarot meanings from scratch.
+For Standard readings, do not rely on an LLM to invent Tarot meanings from scratch.
 
 Store Tarot card meanings in structured master data.
 
@@ -226,9 +619,9 @@ Example:
 }
 ```
 
-This knowledge base becomes the application's source of truth.
+This knowledge base becomes the application's source of truth for Standard.
 
-The LLM should mainly synthesize and phrase the reading.
+Deep is the deliberate exception: it does not receive these stored meanings and uses the full model's own Tarot knowledge against the exact raw question.
 
 ---
 
@@ -276,21 +669,25 @@ Current ability and initiative
 Possible renewal and hopeful direction
 ```
 
-The LLM should synthesize this into one coherent reading.
+The selected generator should synthesize this into one coherent reading: the rule engine for Standard, or the full LLM for Deep.
 
 ---
 
 # 8. Rule Engine vs LLM
 
-Core architectural principle:
+The generation boundary is mode-specific:
 
 ```text
-Rule Engine = decides what the reading means
+STANDARD
+= Rule engine decides and renders the reading from Tarot master data
+= No LLM call
 
-LLM = decides how to say it
+DEEP
+= Full LLM interprets the raw question and selected cards
+= No classifier result, rule interpretation, or card meaning in the user prompt
 ```
 
-The backend should prepare structured information before calling the LLM.
+For Standard, the backend prepares structured interpretation information from application master data. This provides consistent, inexpensive, cacheable readings.
 
 Example:
 
@@ -304,7 +701,7 @@ Example:
 }
 ```
 
-Then the LLM converts this into natural language.
+The Standard rule renderer converts this into the structured response without an LLM.
 
 Benefits:
 
@@ -314,6 +711,8 @@ Benefits:
 - Easier caching
 - Easier prompt versioning
 - Less hallucination
+
+Deep intentionally chooses a different quality tradeoff. The backend supplies card identity, position, and orientation, while the full LLM applies its own Tarot knowledge directly to the exact user question. Response-schema enforcement and validation still constrain the output.
 
 ---
 
@@ -346,7 +745,7 @@ Important LLM limitations:
 - GPU utilization
 - Queue depth
 
-Therefore the architecture should try to avoid unnecessary LLM calls.
+Standard avoids LLM calls entirely. Deep is an intentional premium full-model call, so optimize its routing and concurrency without bypassing it through classification or generated-answer reuse.
 
 ---
 
@@ -357,31 +756,34 @@ The user chooses the generation mode before revealing the reading:
 ```text
 STANDARD
 → Rule-engine reading
+→ Question classification and eligible finished-answer caching
 → No LLM call
 → Available without a premium entitlement
 
 DEEP
 → Premium option
-→ Rule interpretation + private qwen3:8b synthesis through Ollama
+→ Bypasses question classification and generated-answer caching
+→ Sends only the raw question and selected card position/id/orientation
+→ Uses the full configured LLM's Tarot knowledge directly
 → Requires a backend-verified entitlement
 ```
 
 The browser must never be trusted to declare that a user has paid. In production, authentication or billing infrastructure grants the server-side claim `tarot:deep_reading=true`; the ASP.NET backend enforces that claim before any Deep generation. Development may enable an explicit local bypass for testing.
 
-Both modes return the same structured reading contract and may use finished-answer caching. Cache identity must include the reading mode so a Standard rule response can never collide with a Deep LLM response. Deep cache identity also includes the configured model and prompt versions.
+Both modes return the same structured reading contract. Only Standard uses the shared finished-answer cache. Deep always returns `CacheStatus.SKIPPED` and `CacheKey = null`, ensuring each premium question reaches the full LLM.
 
 If Deep inference returns malformed JSON, changes card identity/order, or uses the wrong output language, validation rejects it and the response is not cached.
 
 ---
 
-# 10. Finished LLM Answer Cache
+# 10. STANDARD Finished-Answer Cache
 
 The main optimization idea is:
 
 ```text
 If a new user receives the same effective question type
 and the same Tarot spread/cards,
-reuse a previously generated finished LLM answer.
+reuse a previously generated finished Standard answer.
 ```
 
 Basic flow:
@@ -401,18 +803,18 @@ Redis
    ↙   ↘
  HIT   MISS
  ↓      ↓
-Return  LLM
+Return  Rule renderer
 cache    ↓
-       Store Result
+       Store response
           ↓
        Return
 ```
 
-The cache should store the **finished structured generated response**, with Standard and Deep entries kept separate by reading mode.
+The cache stores the **finished structured Standard response**. Deep does not enter this flow and never reads or writes generated-answer cache entries.
 
 ---
 
-# 11. Why Classify Questions First
+# 11. Why Classify STANDARD Questions First
 
 Caching against exact user question text would produce poor cache reuse.
 
@@ -435,11 +837,11 @@ Domain: CAREER
 Intent: CAREER_CHANGE_JOB
 ```
 
-Then users with the same question intent and same selected cards can share a finished cached answer.
+Then Standard users with the same question intent and same selected cards can share a finished cached answer. Deep questions bypass classification and are never shared.
 
 ---
 
-# 12. Question Classification Design
+# 12. STANDARD Question Classification Design
 
 Recommended classifier output:
 
@@ -547,9 +949,9 @@ The implemented baseline uses a versioned `tfidf-logreg-seed-v1` artifact, bilin
 
 ---
 
-# 13. Personalized Questions
+# 13. Personalized STANDARD Questions
 
-Not every question should reuse a generic cached answer.
+Not every Standard question should reuse a generic cached answer. Deep never reuses a generated answer, regardless of personalization.
 
 Example:
 
@@ -572,14 +974,14 @@ Then:
 ```text
 Skip shared finished-answer cache
        ↓
-Generate directly by reading mode
+Generate directly with the Standard rule renderer
 ```
 
 This prevents inappropriate reuse.
 
 ---
 
-# 14. Classifier Confidence
+# 14. STANDARD Classifier Confidence
 
 The classifier should return a confidence score.
 
@@ -617,7 +1019,7 @@ This value should be configurable and tuned using real data.
 
 ---
 
-# 15. Classifier Evolution
+# 15. STANDARD Classifier Evolution
 
 Recommended evolution:
 
@@ -661,12 +1063,11 @@ The seed model is an architectural baseline, not a claim of production accuracy.
 
 # 16. Cache Key Concept
 
-The shared finished-answer cache key should depend on:
+The shared Standard finished-answer cache key should depend on:
 
 ```text
 Question domain
 Question intent
-Reading mode
 Spread type
 Card position
 Card identity
@@ -676,18 +1077,12 @@ Prompt version
 Interpretation version
 ```
 
-Required for Deep mode:
-
-```text
-Model version
-```
-
 Example canonical input:
 
 ```text
 CAREER
 CAREER_CHANGE_JOB
-DEEP
+STANDARD
 DESTINY_3
 TH
 PAST:THE_TOWER:UPRIGHT
@@ -708,6 +1103,8 @@ Redis key:
 ```text
 tarot:answer:<hash>
 ```
+
+Deep has no generated-answer cache key because every request uses the raw question and full LLM directly.
 
 ---
 
@@ -747,7 +1144,7 @@ Do not sort cards alphabetically when building the cache key.
 
 # 18. Prompt Versioning
 
-Prompt version must be part of cache identity.
+Prompt version remains part of Standard cache identity and deployment/configuration tracking. Deep does not use a generated-answer cache, so a Deep prompt change affects the next request immediately.
 
 Example:
 
@@ -764,7 +1161,7 @@ PROMPT_V3
 → PROMPT_V4
 ```
 
-old cached responses naturally stop matching.
+old cached Standard responses naturally stop matching.
 
 This is better than manually clearing all previous cached entries.
 
@@ -781,7 +1178,7 @@ INTERPRETATION_V1
 INTERPRETATION_V2
 ```
 
-Include this version in the cache key.
+Include this version in the Standard cache key.
 
 If Tarot master content changes, new readings automatically use a new cache namespace.
 
@@ -828,7 +1225,7 @@ Benefits:
 
 - Easy frontend rendering
 - Easy validation
-- Easy caching
+- Easy Standard caching
 - Easier API versioning
 - Better localization support
 - Easier future prompt changes
@@ -881,9 +1278,9 @@ direction
 
 ---
 
-## L3 — Finished LLM Answer Cache
+## L3 — Finished STANDARD Answer Cache
 
-Primary optimization for this project.
+Primary Standard-mode optimization for this project.
 
 Same:
 
@@ -901,13 +1298,13 @@ locale
 versions
 ```
 
-can return a previously generated complete reading without calling the LLM.
+can return a previously generated complete Standard reading without running the rule renderer again. Deep never uses L3.
 
 ---
 
 # 22. Cache Hit vs Cache Miss
 
-Cache HIT:
+Standard cache HIT:
 
 ```text
 Same effective intent
@@ -924,10 +1321,10 @@ Result:
 
 ```text
 Return cached finished response
-LLM GPU not used
+No LLM is involved
 ```
 
-Cache MISS:
+Standard cache MISS:
 
 ```text
 Any cache identity input differs
@@ -936,13 +1333,13 @@ Any cache identity input differs
 Result:
 
 ```text
-Generate by reading mode
+Generate with the rule renderer
 Validate
 Save result
 Return
 ```
 
-Skip shared cache:
+Skip Standard shared cache:
 
 ```text
 Low classifier confidence
@@ -953,8 +1350,10 @@ Highly personalized question
 Result:
 
 ```text
-Generate directly by reading mode
+Generate directly with the Standard rule renderer
 ```
+
+Deep always skips this entire cache flow and calls the full LLM with the raw question.
 
 ---
 
@@ -967,7 +1366,7 @@ Example:
 ```text
 First request
 → MISS
-→ Generate with LLM
+→ Generate with Standard rule renderer
 → Cache result
 
 Second matching request
@@ -981,7 +1380,7 @@ Over time:
 Traffic creates a library of common Tarot readings.
 ```
 
-This is especially useful for common question types and popular spreads.
+This is especially useful for common Standard question types and popular spreads. Deep traffic does not grow or reuse this library.
 
 ---
 
@@ -1004,7 +1403,7 @@ Total:
 
 This is small enough to potentially pre-generate offline.
 
-One-card readings could eventually require almost no runtime LLM inference.
+One-card Standard readings can be pre-generated or cached aggressively. One-card Deep readings still call the full LLM.
 
 ---
 
@@ -1031,11 +1430,13 @@ Later matching request
 → Reuse
 ```
 
+This lazy-generation cache flow applies to Standard only. Deep always generates a fresh response.
+
 ---
 
 # 26. Multiple Cached Variants
 
-One future optimization is to store multiple wording variants for the same cache identity.
+One future Standard-mode optimization is to store multiple wording variants for the same cache identity.
 
 Instead of:
 
@@ -1088,7 +1489,7 @@ Redis
  ↓ MISS
 PostgreSQL
  ↓ MISS
-LLM
+Standard rule renderer
  ↓
 Save PostgreSQL
  ↓
@@ -1099,7 +1500,7 @@ Return
 
 If Redis is flushed, the system can repopulate cache from PostgreSQL.
 
-Generated LLM answers become reusable content assets rather than disposable cache entries.
+Generated Standard answers become reusable content assets rather than disposable cache entries. Deep responses are returned directly and are not stored in this shared generated-answer library.
 
 ---
 
@@ -1111,10 +1512,10 @@ If many users request the same uncached reading at the same time:
 100 users
 → same cache key
 → 100 misses
-→ 100 LLM calls
+→ 100 duplicate Standard generations/writes
 ```
 
-This wastes GPU.
+This wastes application and database work even though Standard does not use the GPU.
 
 The system should eventually use a distributed lock:
 
@@ -1375,7 +1776,7 @@ Optional queue
 
 ---
 
-## Classifier
+## STANDARD Classifier
 
 Recommended:
 
@@ -1559,61 +1960,25 @@ if queued inference becomes necessary.
 # 35. Recommended Overall Architecture
 
 ```text
-                        USERS
-                          │
-                          ▼
-                    Cloudflare
-                          │
-                          ▼
-                ┌─────────────────┐
-                │ ASP.NET Backend │
-                └────────┬────────┘
+Users → Cloudflare → ASP.NET Backend
                          │
-             ┌───────────┼───────────┐
-             │           │           │
-             ▼           ▼           ▼
-         PostgreSQL    Redis      Classifier
-                                   Python
-                                   gRPC
-                                   CPU
-                                      │
-                                      ▼
-                               Cache Eligible?
-                                      │
-                              ┌───────┴───────┐
-                              │               │
-                             YES              NO
-                              │               │
-                              ▼               │
-                            Redis             │
-                         ↙         ↘           │
-                       HIT         MISS        │
-                        │            │         │
-                        │            ▼         │
-                        │       PostgreSQL     │
-                        │        Answer DB     │
-                        │            │         │
-                        │           MISS       │
-                        │            │         │
-                        │            └────┬────┘
-                        │                 ▼
-                        │             Tailscale
-                        │                 │
-                        │                 ▼
-                        │        ┌────────────────┐
-                        │        │ Personal GPU   │
-                        │        │ vLLM           │
-                        │        │ Qwen / Llama   │
-                        │        └───────┬────────┘
-                        │                │
-                        │                ▼
-                        │          LLM Response
-                        │                │
-                        │       Save DB + Redis
-                        │                │
-                        └──────────┬─────┘
-                                   ▼
-                               User Result
+                         ├── STANDARD
+                         │      ↓
+                         │   Classifier (Python gRPC with C# fallback)
+                         │      ↓
+                         │   Eligible cache? → Redis → PostgreSQL
+                         │      ↓ MISS/SKIP
+                         │   Rule renderer → validate → persist/cache when eligible
+                         │
+                         └── DEEP (premium entitlement required)
+                                ↓
+                             Bypass classifier and generated-answer cache
+                                ↓
+                             Raw question + selected cards
+                                ↓
+                             Tailscale → Private GPU → vLLM/Qwen/Llama
+                                ↓
+                             Validate structured response → return directly
 ```
 
 ---
@@ -1671,11 +2036,13 @@ Total reading requests
 Classifier latency
 Classifier confidence
 Classifier rejection rate
+(STANDARD only)
 
 Cache eligible requests
 Cache hits
 Cache misses
 Cache hit rate
+(STANDARD only)
 
 LLM requests avoided
 LLM requests executed
@@ -1710,28 +2077,29 @@ LLM Avoidance Rate
 Requests served without LLM / Total reading requests
 ```
 
+For Deep specifically, monitor direct-request count, entitlement rejection count, latency, retries/failover, structured-output rejection, language rejection, quality score, and confirmation that cache status remains `SKIPPED`.
+
 ---
 
 # 38. Expected Scaling Behavior
 
-At low traffic:
+For Standard at low traffic:
 
 ```text
 Many MISS
-→ More LLM calls
 → Cache gradually grows
 ```
 
-At higher traffic:
+For Standard at higher traffic:
 
 ```text
 Common question intents repeat
 Common card combinations repeat
 → More HITs
-→ Less GPU work per user
+→ Less rule/database work per user
 ```
 
-The system should gradually build a reusable library of common generated Tarot readings.
+The system should gradually build a reusable library of common Standard Tarot readings. Deep GPU demand scales with the number of premium Deep requests because those responses are intentionally neither classified nor shared.
 
 ---
 
@@ -1815,24 +2183,25 @@ The reading should still feel engaging and meaningful without claiming certainty
 Keep these principles throughout implementation:
 
 ```text
-1. Tarot master data is the source of truth.
+1. Tarot master data is the source of truth for STANDARD readings.
 
-2. Rule Engine decides meaning.
-   LLM decides wording.
+2. STANDARD uses the rule engine and no LLM.
+   DEEP lets the full LLM interpret the raw question and selected cards.
 
-3. LLM inference is expensive.
-   Avoid unnecessary GPU calls.
+3. DEEP is a premium full-model call.
+   Do not reduce it through classification or shared answer reuse.
 
-4. Classify question intent before cache lookup.
+4. Classify question intent before STANDARD cache lookup only.
 
-5. Reuse finished readings when the effective intent
-   and card spread are the same.
+5. Reuse eligible STANDARD readings when the effective intent
+   and card spread are the same. Never share DEEP generated answers.
 
-6. Do not reuse generic answers for highly personalized questions.
+6. Always send the exact raw question for DEEP.
 
 7. Card position and orientation matter.
 
-8. Version prompts and Tarot interpretation content.
+8. The DEEP user prompt contains only question and card selection.
+   Do not send card names, meanings, classifier data, or rule payloads.
 
 9. Redis is for speed.
    PostgreSQL is for persistence.

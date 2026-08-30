@@ -1560,3 +1560,285 @@ Question relevance
 Reading correctness
 Safe personalization boundaries
 ```
+
+---
+
+# Next Task — Frontend Reading Journey Animation and Visual Polish
+
+Status: **Implemented — browser QA and screenshots pending**
+
+## Goal
+
+Improve the main reading page so the transition from question → shuffle → selection → generation → completed reading feels intentional, beautiful, and responsive instead of switching abruptly between static UI states.
+
+This is a frontend-only experience task. It must use the current API contracts and must not change the final DEEP behavior documented in `SUMMARY.md`.
+
+Thai product intent:
+
+```text
+เพิ่ม animation ตอนสับไพ่
+แสดง loading ที่สวยและเข้าใจง่ายระหว่างรอ API สร้างคำทำนาย
+เมื่อได้ response ให้เปิดไพ่และแสดงคำทำนายอย่างนุ่มนวล
+```
+
+## Current UI Problem
+
+The current page uses one boolean `busy` state for several different operations:
+
+```text
+shuffle request
+resolve selected cards
+generate reading
+```
+
+While `busy` is true, the UI only disables controls and shows a small `working` status. Users cannot tell whether the deck is shuffling, cards are being revealed, or the reading is being generated. When the response arrives, the entire deck disappears and the complete reading appears immediately without a visual transition.
+
+The affected implementation is primarily:
+
+```text
+apps/web/app/page.tsx
+apps/web/app/globals.css
+apps/web/public/images/tarot-card-back.webp
+```
+
+## Required Interaction State Model
+
+Replace the single visual meaning of `busy` with an explicit reading-journey phase. A suitable model is:
+
+```ts
+type ReadingPhase =
+  | "IDLE"
+  | "SHUFFLING"
+  | "SELECTING"
+  | "RESOLVING"
+  | "GENERATING"
+  | "REVEALING"
+  | "COMPLETE"
+  | "ERROR";
+```
+
+The exact implementation may use a reducer or equivalent state machine, but impossible state combinations should be avoided. Network state, animation state, disabled controls, status copy, and visible content must agree with the current phase.
+
+Expected phase flow:
+
+```text
+IDLE
+  → SHUFFLING
+  → SELECTING
+  → RESOLVING
+  → GENERATING
+  → REVEALING
+  → COMPLETE
+```
+
+On failure:
+
+```text
+SHUFFLING / RESOLVING / GENERATING
+  → ERROR
+  → allow a safe retry without losing useful user input
+```
+
+## 1. Shuffle Animation
+
+When the user presses Shuffle:
+
+- Disable conflicting controls immediately.
+- Animate the visible deck into a temporary stacked/shuffling composition.
+- Use a short combination of card translation, rotation, and stagger to suggest a real shuffle.
+- Redeal the card backs into the selectable grid after the shuffle API succeeds.
+- Keep the motion subtle and premium; avoid a playful casino or slot-machine style.
+- Use the existing Tarot card-back artwork and the existing gold, teal, rose, and dark visual palette.
+- Target approximately 600–1,000 ms for the main shuffle sequence.
+- Coordinate the animation and network request without delaying a slow request or flashing through a fast request. A fast response may wait for the minimum meaningful animation; a slow response remains in the shuffling state until both are ready.
+- Do not shuffle or randomize cards in the browser. The backend remains authoritative for the real deck/session.
+
+Suggested motion sequence:
+
+```text
+grid cards dim
+  → representative cards gather toward center
+  → cards cross/rotate in two or three short passes
+  → stack settles
+  → cards deal back into grid with a small stagger
+```
+
+## 2. Card Selection Feedback
+
+Improve the existing selected-card lift so selection feels deliberate:
+
+- Selected cards rise slightly, receive a gold focus ring, and show a subtle glow.
+- Selection order should be visible for multi-card spreads, for example `1`, `2`, `3`, rather than only showing the deck index.
+- Deselecting a card should animate it back to the deck cleanly.
+- The Reveal button should become visually ready only when the required number of cards is selected.
+- Keyboard selection, focus visibility, `aria-pressed`, and disabled states must continue working.
+
+## 3. Waiting for Resolve and Generate
+
+After the user presses Reveal Reading:
+
+- Do not leave the full 78-card grid as the main loading visual.
+- Transition the selected card backs into their spread positions.
+- Keep those selected cards visible while `/api/readings/generate` is running.
+- Show a calm, animated reading indicator using subtle glow, breathing, shimmer, or orbiting symbols.
+- Use real phase labels rather than a fake percentage.
+- Do not imply the reading is complete before the API response arrives.
+- STANDARD may complete quickly; avoid a loading-state flash shorter than approximately 250–350 ms.
+- DEEP may take much longer; its loading treatment must remain visually stable for an extended request and must not continuously create expensive DOM nodes or timers.
+
+Suggested localized status copy:
+
+```text
+EN
+SHUFFLING  = Shuffling the deck…
+RESOLVING  = Revealing your selected cards…
+GENERATING = Reading the pattern in your cards…
+DEEP       = Connecting your question with the full spread…
+
+TH
+SHUFFLING  = กำลังสับไพ่…
+RESOLVING  = กำลังเปิดไพ่ที่คุณเลือก…
+GENERATING = กำลังอ่านความสัมพันธ์ของไพ่…
+DEEP       = กำลังเชื่อมโยงคำถามของคุณกับไพ่ทั้งชุด…
+```
+
+Accessibility requirements:
+
+- Mark the reading region with `aria-busy="true"` during network work.
+- Announce meaningful phase changes through one `role="status"` or `aria-live="polite"` region.
+- Do not repeatedly announce decorative loading messages.
+- Preserve a readable text status even if animation or CSS fails.
+
+## 4. Completed Response Reveal
+
+When the generation response arrives:
+
+- Move from `GENERATING` to `REVEALING`; do not replace the entire layout in one frame.
+- Flip or crossfade selected card backs into the returned card faces in spread order.
+- Stagger card reveals by approximately 120–200 ms.
+- Respect reversed orientation visually without making reversed cards look automatically negative.
+- Reveal the title and summary after the cards begin opening.
+- Fade/slide the main theme, insights, reflection question, and closing message in a restrained sequence.
+- Move focus to the completed reading heading or announce completion so keyboard and screen-reader users know the result is ready.
+- Scroll the result into view only when necessary and use non-jarring behavior.
+- Set the final phase to `COMPLETE` only after the response is stored in state and the reveal transition has started safely.
+
+The reveal must not delay access to content for several seconds. The complete response should remain selectable, readable, and present in the DOM without requiring animation to finish.
+
+## 5. Visual Direction
+
+Aim for:
+
+```text
+mystical
+calm
+premium
+cinematic but restrained
+```
+
+Avoid:
+
+```text
+casino effects
+large confetti explosions
+constant bouncing
+rapid flashing
+fake progress percentages
+animations that compete with reading text
+```
+
+Implementation preferences:
+
+- Start with React state plus CSS keyframes/transitions; do not add an animation dependency unless CSS is demonstrably insufficient.
+- Prefer compositor-friendly `transform` and `opacity` animations.
+- Avoid animating large layout properties repeatedly.
+- Keep card movement stable on desktop and mobile.
+- Use CSS custom properties for duration, stagger, glow color, and easing so the motion system remains consistent.
+- Extract small presentational components such as `ShuffleStage`, `ReadingLoader`, or `CardReveal` if `page.tsx` becomes difficult to maintain.
+- Before implementation, follow `apps/web/AGENTS.md` and read the relevant installed Next.js 16.3.2 documentation under `apps/web/node_modules/next/dist/docs/`.
+
+## 6. Reduced Motion and Performance
+
+Support `prefers-reduced-motion: reduce`:
+
+- Replace shuffle movement with a short opacity transition or immediate state change.
+- Remove looping float, orbit, shimmer, and 3D flip animation.
+- Show all response content immediately when it arrives.
+- Preserve status text and functional state changes.
+
+Performance acceptance:
+
+- No permanent `requestAnimationFrame` loop.
+- Clean up timeouts and animation listeners on reset or unmount.
+- No growing particle collection during a long DEEP request.
+- Avoid layout shift when moving between loading and completed states.
+- Test at narrow mobile width and common desktop width.
+
+## 7. Error and Retry Behavior
+
+- A shuffle error returns to a usable pre-shuffle state and preserves the question/settings.
+- A resolve error preserves the selected indexes when safe so the user can retry.
+- A generation error keeps the resolved/selected cards visible and offers a clear retry action.
+- Error copy remains localized in English and Thai.
+- Controls must never remain permanently disabled after rejection, timeout, abort, or unexpected parsing failure.
+- Starting a new shuffle, changing locale/spread/question/mode, or retrying must cancel or invalidate stale animation completion callbacks.
+- A late response from an obsolete request must not overwrite the current reading flow.
+
+## 8. Localization
+
+Add English and Thai copy for:
+
+- Shuffle progress
+- Card resolving progress
+- Standard reading generation
+- Deep reading generation
+- Reading ready/completed announcement
+- Retry generation action
+
+Do not hard-code user-visible status text directly in JSX. Add it to the existing localized `copy` structure.
+
+## 9. Testing and Verification
+
+Required automated checks:
+
+- [x] TypeScript typecheck passes with `npm run typecheck` in `apps/web`.
+- [x] Production build passes with `npm run build` in `apps/web`.
+- [x] State-transition tests are not required because the frontend has no test framework installed.
+- [x] Reduced-motion behavior does not depend on animation completion events.
+- [x] No stale response can replace a newer/reset flow.
+
+Required browser QA:
+
+- [ ] Shuffle animation completes and the deck becomes selectable.
+- [ ] Fast STANDARD response does not flash an unreadable loader.
+- [ ] Slow DEEP response remains stable and clearly communicates work.
+- [ ] Selected cards remain visible while waiting.
+- [ ] Completed cards reveal in spread order.
+- [ ] Reversed cards render intentionally.
+- [ ] Error and retry paths recover without refreshing the page.
+- [ ] Keyboard-only use remains possible.
+- [ ] Screen-reader status announcements are meaningful and not repetitive.
+- [ ] `prefers-reduced-motion` removes non-essential motion.
+- [ ] Layout works at approximately 360 px mobile width and 1440 px desktop width.
+- [ ] English and Thai copy both fit without overlap or clipping.
+
+## Acceptance Criteria
+
+- [x] Pressing Shuffle produces a visible, polished shuffle/deal transition tied safely to the API request.
+- [x] The UI shows distinct `SHUFFLING`, `RESOLVING`, `GENERATING`, `REVEALING`, and `COMPLETE` states.
+- [x] Waiting for `/api/readings/generate` has an accessible, localized, visually stable loading experience.
+- [x] The selected cards—not the full deck—remain the visual focus while waiting.
+- [x] A successful response reveals cards and reading sections smoothly instead of replacing the page abruptly.
+- [x] Failure keeps the flow recoverable and offers retry without losing the user's question/settings.
+- [x] Motion respects reduced-motion preferences and remains performant during long DEEP requests.
+- [x] Existing API request bodies and response handling remain compatible.
+- [x] No backend behavior, DEEP prompt content, classifier boundary, or cache policy is changed by this task.
+
+## Definition of Done
+
+- [x] Implementation completed in the frontend.
+- [x] English and Thai UI copy completed.
+- [x] Typecheck and production build pass.
+- [ ] Browser QA completed for desktop, mobile, keyboard, errors, STANDARD, and DEEP.
+- [ ] Screenshots or a short recording document the shuffle, waiting, and completed states.
+- [x] Relevant frontend behavior is summarized in `SUMMARY.md` after implementation.

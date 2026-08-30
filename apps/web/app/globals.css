@@ -10,6 +10,12 @@
   --rose: #b85d74;
   --teal: #4b9a96;
   --ink: #14151a;
+  --motion-fast: 180ms;
+  --motion-medium: 500ms;
+  --motion-shuffle: 960ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --glow-gold: rgba(213, 173, 97, 0.42);
+  --glow-teal: rgba(75, 154, 150, 0.34);
 }
 
 * {
@@ -40,6 +46,15 @@ button:disabled {
   opacity: 0.55;
 }
 
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+h2:focus-visible {
+  outline: 3px solid rgba(213, 173, 97, 0.82);
+  outline-offset: 3px;
+}
+
 .shell {
   min-height: 100vh;
   padding: 24px;
@@ -62,6 +77,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.2);
 }
 
 .eyebrow {
@@ -197,6 +213,13 @@ textarea::placeholder {
   color: #17120a;
   background: var(--gold);
   font-weight: 700;
+  transition: transform var(--motion-fast) ease, box-shadow var(--motion-fast) ease, filter var(--motion-fast) ease;
+}
+
+.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(213, 173, 97, 0.2);
+  filter: brightness(1.05);
 }
 
 .error {
@@ -206,11 +229,27 @@ textarea::placeholder {
   padding: 12px;
   border-radius: 8px;
   line-height: 1.45;
+  margin-bottom: 0;
+}
+
+.error-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.retry-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .deck-area {
   min-height: calc(100vh - 48px);
   padding: 24px;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 34%, rgba(75, 154, 150, 0.06), transparent 34rem);
+  overflow: hidden;
 }
 
 .deck-header {
@@ -227,6 +266,16 @@ textarea::placeholder {
   padding: 8px 10px;
   border-radius: 999px;
   font-size: 0.82rem;
+  max-width: min(46vw, 420px);
+  line-height: 1.35;
+  text-align: right;
+  transition: opacity var(--motion-fast) ease;
+}
+
+.status-empty {
+  border-color: transparent;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .deck-grid {
@@ -246,7 +295,9 @@ textarea::placeholder {
     url("/images/tarot-card-back.webp") center / cover;
   display: grid;
   place-items: center;
-  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+  position: relative;
+  isolation: isolate;
+  transition: transform var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 
 .card-back:hover:not(:disabled),
@@ -256,6 +307,12 @@ textarea::placeholder {
   background:
     linear-gradient(rgba(184, 93, 116, 0.1), rgba(75, 154, 150, 0.24)),
     url("/images/tarot-card-back.webp") center / cover;
+}
+
+.card-back.selected {
+  transform: translateY(-7px);
+  box-shadow: 0 0 0 2px rgba(213, 173, 97, 0.32), 0 12px 26px var(--glow-gold);
+  z-index: 1;
 }
 
 .card-back span {
@@ -268,6 +325,14 @@ textarea::placeholder {
   background: rgba(17, 18, 23, 0.84);
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
   font-size: 0.78rem;
+}
+
+.card-back .selection-order {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #17120a;
+  box-shadow: 0 0 18px var(--glow-gold);
+  font-weight: 800;
 }
 
 .reading {
@@ -375,6 +440,364 @@ blockquote {
   color: #c7f1ee;
 }
 
+.reveal-action {
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.reveal-action.ready {
+  border-color: var(--gold);
+  box-shadow: 0 0 24px rgba(213, 173, 97, 0.15);
+  transform: translateY(-1px);
+}
+
+.shuffle-stage,
+.waiting-stage {
+  min-height: clamp(360px, 64vh, 680px);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.shuffle-stage::before,
+.waiting-stage::before {
+  content: "";
+  position: absolute;
+  inset: 12% 8%;
+  border: 1px solid rgba(213, 173, 97, 0.09);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(213, 173, 97, 0.055), transparent 62%);
+}
+
+.shuffle-aura {
+  position: absolute;
+  width: min(54vw, 520px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(75, 154, 150, 0.16), rgba(184, 93, 116, 0.07) 44%, transparent 68%);
+  animation: aura-breathe 1.6s ease-in-out infinite alternate;
+}
+
+.shuffle-stack {
+  position: relative;
+  width: 112px;
+  aspect-ratio: 2 / 3;
+  perspective: 900px;
+}
+
+.shuffle-card {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(213, 173, 97, 0.72);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(17, 18, 23, 0.04), rgba(17, 18, 23, 0.3)),
+    url("/images/tarot-card-back.webp") center / cover;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
+  transform-origin: 50% 110%;
+  will-change: transform, filter;
+}
+
+.shuffle-mixing .shuffle-card {
+  animation: shuffle-pass var(--motion-shuffle) var(--motion-ease) infinite;
+}
+
+.shuffle-mixing .shuffle-card-1 { animation-delay: -760ms; }
+.shuffle-mixing .shuffle-card-2 { animation-delay: -630ms; }
+.shuffle-mixing .shuffle-card-3 { animation-delay: -500ms; }
+.shuffle-mixing .shuffle-card-4 { animation-delay: -370ms; }
+.shuffle-mixing .shuffle-card-5 { animation-delay: -240ms; }
+.shuffle-mixing .shuffle-card-6 { animation-delay: -110ms; }
+.shuffle-mixing .shuffle-card-7 { animation-delay: 20ms; }
+
+.shuffle-settling .shuffle-aura {
+  animation: aura-settle 620ms var(--motion-ease) both;
+}
+
+.shuffle-settling .shuffle-card {
+  animation: shuffle-settle 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.shuffle-settling .shuffle-card-1 { --settle-x: -54px; --settle-y: -8px; --settle-r: -9deg; animation-delay: 0ms; }
+.shuffle-settling .shuffle-card-2 { --settle-x: 46px; --settle-y: 4px; --settle-r: 8deg; animation-delay: 14ms; }
+.shuffle-settling .shuffle-card-3 { --settle-x: -34px; --settle-y: 8px; --settle-r: -6deg; animation-delay: 28ms; }
+.shuffle-settling .shuffle-card-4 { --settle-x: 28px; --settle-y: -5px; --settle-r: 5deg; animation-delay: 42ms; }
+.shuffle-settling .shuffle-card-5 { --settle-x: -18px; --settle-y: 2px; --settle-r: -3deg; animation-delay: 56ms; }
+.shuffle-settling .shuffle-card-6 { --settle-x: 12px; --settle-y: 0px; --settle-r: 2deg; animation-delay: 70ms; }
+.shuffle-settling .shuffle-card-7 { --settle-x: 0px; --settle-y: -2px; --settle-r: 0deg; animation-delay: 84ms; }
+
+.deal-stage {
+  position: relative;
+  min-height: clamp(360px, 64vh, 680px);
+}
+
+.deal-grid {
+  position: relative;
+  z-index: 3;
+}
+
+.deal-card {
+  opacity: 0;
+  cursor: default;
+  will-change: transform, opacity;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.28);
+}
+
+.deal-origin {
+  position: absolute;
+  z-index: 2;
+  top: min(32vh, 250px);
+  left: 50%;
+  width: 88px;
+  aspect-ratio: 2 / 3;
+  border: 1px solid rgba(213, 173, 97, 0.72);
+  border-radius: 9px;
+  background: url("/images/tarot-card-back.webp") center / cover;
+  box-shadow:
+    -5px 4px 0 -1px #1d1e24,
+    -5px 4px 0 0 rgba(213, 173, 97, 0.35),
+    0 20px 46px rgba(0, 0, 0, 0.42),
+    0 0 34px rgba(75, 154, 150, 0.18);
+  pointer-events: none;
+  animation: deal-origin-fade 1550ms var(--motion-ease) both;
+}
+
+.waiting-stage {
+  align-content: center;
+  gap: 32px;
+}
+
+.waiting-spread {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(14px, 3vw, 34px);
+  width: 100%;
+}
+
+.waiting-card-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.waiting-card {
+  width: clamp(88px, 11vw, 128px);
+  aspect-ratio: 2 / 3;
+  border: 1px solid rgba(213, 173, 97, 0.68);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(17, 18, 23, 0.02), rgba(17, 18, 23, 0.24)),
+    url("/images/tarot-card-back.webp") center / cover;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34), 0 0 28px rgba(75, 154, 150, 0.1);
+  animation: card-breathe 2.8s ease-in-out infinite alternate;
+}
+
+.waiting-card-wrap:nth-child(2) .waiting-card { animation-delay: -900ms; }
+.waiting-card-wrap:nth-child(3) .waiting-card { animation-delay: -1800ms; }
+
+.waiting-card.is-reversed {
+  transform: rotate(180deg);
+}
+
+.reading-loader {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  color: #cfe8e6;
+  text-align: center;
+}
+
+.reading-loader p {
+  margin: 0;
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+.loader-orbit {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  color: var(--gold);
+  border: 1px solid rgba(75, 154, 150, 0.34);
+  border-radius: 50%;
+  box-shadow: 0 0 28px var(--glow-teal);
+  animation: aura-breathe 1.8s ease-in-out infinite alternate;
+}
+
+.loader-orbit i {
+  position: absolute;
+  inset: -7px;
+  border-top: 1px solid var(--gold);
+  border-radius: 50%;
+  animation: orbit 3.8s linear infinite;
+}
+
+.loader-orbit i:nth-child(2) { transform: rotate(120deg); animation-delay: -1.2s; }
+.loader-orbit i:nth-child(3) { transform: rotate(240deg); animation-delay: -2.4s; }
+
+.reading {
+  align-content: start;
+}
+
+.reading-intro {
+  display: grid;
+  gap: 18px;
+}
+
+.card-visual {
+  position: relative;
+  min-height: 144px;
+  perspective: 900px;
+}
+
+.card-visual-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateY(180deg);
+}
+
+.is-revealing .card-visual-inner {
+  animation: reveal-card 620ms var(--motion-ease) both;
+}
+
+.card-visual-back,
+.card-visual-front {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+}
+
+.card-visual-back {
+  border: 1px solid rgba(213, 173, 97, 0.58);
+  border-radius: 8px;
+  background: url("/images/tarot-card-back.webp") center / cover;
+}
+
+.card-visual-front {
+  min-height: 0;
+  transform: rotateY(180deg);
+  overflow: hidden;
+}
+
+.card-visual-front::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(20, 21, 26, 0.22);
+  border-radius: 999px 999px 8px 8px;
+  pointer-events: none;
+}
+
+.card-sigil {
+  align-self: center;
+  color: rgba(20, 21, 26, 0.68);
+  transition: transform var(--motion-medium) var(--motion-ease);
+}
+
+.card-sigil.is-reversed {
+  transform: rotate(180deg);
+  color: rgba(184, 93, 116, 0.78);
+}
+
+.is-revealing .reading-card {
+  animation: reading-card-enter 520ms var(--motion-ease) both;
+}
+
+.reveal-section {
+  opacity: 1;
+}
+
+.is-revealing .reveal-section {
+  animation: reveal-copy 520ms var(--motion-ease) both;
+}
+
+.is-revealing .reveal-section-1 { animation-delay: 240ms; }
+.is-revealing .reveal-section-2 { animation-delay: 420ms; }
+.is-revealing .reveal-section-3 { animation-delay: 580ms; }
+
+.reveal-section-3 {
+  display: grid;
+  gap: 18px;
+}
+
+.phase-revealing .deck-header h2 {
+  animation: reveal-copy 420ms var(--motion-ease) 180ms both;
+}
+
+@keyframes shuffle-pass {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  25% { transform: translate3d(-72px, -12px, 0) rotate(-12deg); }
+  52% { transform: translate3d(66px, 5px, 0) rotate(10deg); }
+  76% { transform: translate3d(-18px, -4px, 0) rotate(-3deg); }
+}
+
+@keyframes shuffle-settle {
+  0% {
+    transform: translate3d(var(--settle-x), var(--settle-y), 0) rotate(var(--settle-r)) scale(1.02);
+    filter: brightness(1.08);
+  }
+  58% {
+    transform: translate3d(0, 2px, 0) rotate(0deg) scale(1.01);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    filter: brightness(0.94);
+  }
+}
+
+@keyframes aura-settle {
+  from { opacity: 0.9; transform: scale(1.04); }
+  to { opacity: 0.34; transform: scale(0.72); }
+}
+
+@keyframes deal-origin-fade {
+  0%, 52% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 0.62; transform: translate(-50%, -50%) scale(0.94); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.86); }
+}
+
+@keyframes aura-breathe {
+  from { opacity: 0.58; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes card-breathe {
+  from { box-shadow: 0 16px 36px rgba(0, 0, 0, 0.3), 0 0 16px rgba(75, 154, 150, 0.08); }
+  to { box-shadow: 0 22px 48px rgba(0, 0, 0, 0.38), 0 0 34px rgba(75, 154, 150, 0.24); }
+}
+
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes reveal-card {
+  from { transform: rotateY(0deg) translateY(8px); }
+  to { transform: rotateY(180deg) translateY(0); }
+}
+
+@keyframes reading-card-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes reveal-copy {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 900px) {
   .shell {
     padding: 12px;
@@ -395,5 +818,121 @@ blockquote {
 
   .reading-card {
     grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .deck-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .status {
+    max-width: 100%;
+    text-align: left;
+  }
+}
+
+@media (max-width: 480px) {
+  .shell {
+    padding: 8px;
+  }
+
+  .workspace {
+    gap: 10px;
+  }
+
+  .control-panel {
+    padding: 18px;
+  }
+
+  .deck-area {
+    padding: 14px 4px;
+  }
+
+  .deck-grid {
+    grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+    gap: 7px;
+  }
+
+  .card-back {
+    min-height: 64px;
+  }
+
+  .card-back span {
+    width: 25px;
+    height: 25px;
+    font-size: 0.68rem;
+  }
+
+  .waiting-spread {
+    gap: 10px;
+  }
+
+  .waiting-card {
+    width: clamp(78px, 25vw, 100px);
+  }
+
+  .reading-card {
+    grid-template-columns: 74px minmax(0, 1fr);
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .card-visual {
+    min-height: 116px;
+  }
+
+  .face {
+    padding: 9px;
+  }
+
+  .face strong {
+    font-size: 0.84rem;
+  }
+
+  .face span,
+  .face small {
+    font-size: 0.62rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  .shuffle-card {
+    transform: none;
+  }
+
+  .deal-card {
+    opacity: 1;
+    transform: none;
+  }
+
+  .deal-origin {
+    display: none;
+  }
+
+  .loader-orbit i {
+    display: none;
+  }
+
+  .card-visual-inner {
+    animation: none !important;
+    transform: rotateY(180deg);
+  }
+
+  .reveal-section,
+  .reading-card,
+  .phase-revealing .deck-header h2 {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
   }
 }
