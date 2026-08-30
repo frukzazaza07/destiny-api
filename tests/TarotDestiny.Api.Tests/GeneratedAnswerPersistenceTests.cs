@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using TarotDestiny.Api.Contracts;
 using TarotDestiny.Api.Data;
 using TarotDestiny.Api.Domain;
 using TarotDestiny.Api.Services;
@@ -62,7 +62,7 @@ public sealed class GeneratedAnswerPersistenceTests
         var store = new RecordingGeneratedAnswerStore();
         var llm = new TrackingLlmClient();
         var service = TestSupport.NewReadingService(llm, generatedAnswerStore: store);
-        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.DEEP);
+        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.STANDARD);
 
         var first = await service.GenerateAsync(request, CancellationToken.None);
         var second = await service.GenerateAsync(request, CancellationToken.None);
@@ -70,7 +70,7 @@ public sealed class GeneratedAnswerPersistenceTests
         Assert.AreEqual(CacheStatus.MISS, first.CacheStatus);
         Assert.AreEqual(CacheStatus.HIT, second.CacheStatus);
         Assert.AreEqual(1, store.CallCount);
-        Assert.AreEqual(1, llm.CallCount);
+        Assert.AreEqual(0, llm.CallCount);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public sealed class GeneratedAnswerPersistenceTests
             llm,
             cache,
             generatedAnswerStore: store);
-        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.DEEP);
+        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.STANDARD);
 
         var first = await service.GenerateAsync(request, CancellationToken.None);
         var second = await service.GenerateAsync(request, CancellationToken.None);
@@ -109,11 +109,11 @@ public sealed class GeneratedAnswerPersistenceTests
         Assert.AreEqual(CacheStatus.HIT, second.CacheStatus);
         Assert.AreEqual(first.CacheKey, second.CacheKey);
         Assert.AreEqual(1, store.CallCount);
-        Assert.AreEqual(1, llm.CallCount);
+        Assert.AreEqual(0, llm.CallCount);
     }
 
     [TestMethod]
-    public async Task PersistedWritePreservesOrderedIdentityVersionsAndExcludesRawQuestion()
+    public async Task DirectDeepReadingDoesNotPersistAndKeepsRawQuestionForLlm()
     {
         const string rawQuestion = "Should I leave this specific company?";
         var request = TestSupport.DestinyRequest(rawQuestion, readingMode: ReadingMode.DEEP);
@@ -134,37 +134,10 @@ public sealed class GeneratedAnswerPersistenceTests
 
         var response = await service.GenerateAsync(request, CancellationToken.None);
 
-        Assert.AreEqual(1, store.CallCount);
-        var write = store.Writes.Single();
-        Assert.AreEqual(64, write.CacheHash.Length);
-        Assert.IsTrue(write.CacheHash.All(Uri.IsHexDigit));
-        Assert.AreEqual($"tarot:answer:{write.CacheHash}", response.CacheKey);
-        Assert.AreEqual(TarotDomain.CAREER, write.Domain);
-        Assert.AreEqual("CAREER_CHANGE_JOB", write.Intent);
-        Assert.AreEqual(ReadingMode.DEEP, write.ReadingMode);
-        Assert.AreEqual(request.Spread, write.SpreadId);
-        Assert.AreEqual(request.Locale, write.Locale);
-        CollectionAssert.AreEqual(
-            new[]
-            {
-                "PAST:THE_TOWER:UPRIGHT",
-                "PRESENT:THE_MAGICIAN:UPRIGHT",
-                "DIRECTION:THE_STAR:UPRIGHT"
-            },
-            write.Cards
-                .Select(card => $"{card.Position}:{card.CardId}:{card.Orientation}")
-                .ToArray());
-        Assert.AreEqual(options.CacheVersion, write.CacheVersion);
-        Assert.AreEqual(options.PromptVersion, write.PromptVersion);
-        Assert.AreEqual(options.InterpretationVersion, write.InterpretationVersion);
-        Assert.AreEqual(options.ModelVersion, write.ModelVersion);
-        Assert.AreEqual(response.Title, write.Response.Title);
-        CollectionAssert.AreEqual(
-            response.Cards.Select(card => card.CardId).ToArray(),
-            write.Response.Cards.Select(card => card.CardId).ToArray());
-        Assert.IsNull(llm.ReceivedQuestions.Single());
-        Assert.IsFalse(
-            JsonSerializer.Serialize(write).Contains(rawQuestion, StringComparison.Ordinal),
-            "The persistence boundary must not contain the eligible request's raw question.");
+        Assert.AreEqual(CacheStatus.SKIPPED, response.CacheStatus);
+        Assert.IsNull(response.CacheKey);
+        Assert.AreEqual(0, store.CallCount);
+        Assert.AreEqual(rawQuestion, llm.ReceivedQuestions.Single());
+        Assert.AreEqual(ClassifierSources.DeepDirect, response.Classification.Source);
     }
 }

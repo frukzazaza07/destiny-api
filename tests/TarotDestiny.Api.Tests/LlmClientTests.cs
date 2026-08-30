@@ -60,7 +60,19 @@ public sealed class LlmClientTests
         StringAssert.Contains(requestBody!, "reasoning_effort");
         using var sentRequest = JsonDocument.Parse(requestBody!);
         var userContent = sentRequest.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
-        StringAssert.Contains(userContent!, "\"CAREER\"");
+        using var userInput = JsonDocument.Parse(userContent!);
+        var properties = userInput.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
+        CollectionAssert.AreEqual(new[] { "question", "cards" }, properties);
+        Assert.AreEqual(request.Question, userInput.RootElement.GetProperty("question").GetString());
+        var sentCards = userInput.RootElement.GetProperty("cards");
+        Assert.AreEqual(request.Cards.Count, sentCards.GetArrayLength());
+        Assert.AreEqual(request.Cards[0].CardId, sentCards[0].GetProperty("cardId").GetString());
+        var cardProperties = sentCards[0].EnumerateObject().Select(property => property.Name).ToArray();
+        CollectionAssert.AreEqual(new[] { "position", "cardId", "orientation" }, cardProperties);
+        Assert.IsFalse(sentCards[0].TryGetProperty("meaning", out _));
+        Assert.IsFalse(sentCards[0].TryGetProperty("cardName", out _));
+        Assert.IsFalse(userInput.RootElement.TryGetProperty("classification", out _));
+        Assert.IsFalse(userInput.RootElement.TryGetProperty("payload", out _));
     }
 
     [TestMethod]

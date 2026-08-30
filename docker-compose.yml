@@ -79,6 +79,8 @@ services:
       - redis-data:/data
     networks:
       - backend
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s

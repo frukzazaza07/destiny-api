@@ -16,6 +16,7 @@ public sealed record ClassificationResult(
 
 public static class ClassifierSources
 {
+    public const string DeepDirect = "DEEP_DIRECT";
     public const string CSharpRule = "CSHARP_RULE";
     public const string CSharpTopic = "CSHARP_TOPIC";
     public const string CSharpRuleFallback = "CSHARP_RULE_FALLBACK";
@@ -24,6 +25,7 @@ public static class ClassifierSources
 
 public static class ClassifierDecisionMethods
 {
+    public const string ClassifierBypassed = "CLASSIFIER_BYPASSED";
     public const string CSharpRule = "CSHARP_RULE";
     public const string TfidfLogisticRegression = "TFIDF_LOGREG";
     public const string HybridAgreement = "HYBRID_AGREEMENT";

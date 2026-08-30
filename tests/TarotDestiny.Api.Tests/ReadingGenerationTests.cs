@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using TarotDestiny.Api.Contracts;
 using TarotDestiny.Api.Domain;
 using TarotDestiny.Api.Services;
 
@@ -8,23 +9,28 @@ namespace TarotDestiny.Api.Tests;
 public sealed class ReadingGenerationTests
 {
     [TestMethod]
-    public async Task RepeatedEligibleRequestHitsCacheAndAvoidsLlm()
+    public async Task DeepReadingAlwaysCallsLlmWithRawQuestionAndSkipsCache()
     {
         var llm = new TrackingLlmClient();
-        var service = TestSupport.NewReadingService(llm);
+        var classifier = new ThrowingQuestionClassifier();
+        var service = TestSupport.NewReadingService(llm, classifier: classifier);
         var request = TestSupport.DestinyRequest(readingMode: ReadingMode.DEEP);
 
         var first = await service.GenerateAsync(request, CancellationToken.None);
         var second = await service.GenerateAsync(request, CancellationToken.None);
 
-        Assert.AreEqual(CacheStatus.MISS, first.CacheStatus);
-        Assert.AreEqual(CacheStatus.HIT, second.CacheStatus);
-        Assert.AreEqual(first.CacheKey, second.CacheKey);
-        Assert.AreEqual(1, llm.CallCount);
+        Assert.AreEqual(CacheStatus.SKIPPED, first.CacheStatus);
+        Assert.AreEqual(CacheStatus.SKIPPED, second.CacheStatus);
+        Assert.IsNull(first.CacheKey);
+        Assert.IsNull(second.CacheKey);
+        Assert.AreEqual(2, llm.CallCount);
+        CollectionAssert.AreEqual(new[] { request.Question, request.Question }, llm.ReceivedQuestions);
+        Assert.AreEqual(ClassifierSources.DeepDirect, first.Classification.Source);
+        Assert.AreEqual(ClassifierDecisionMethods.ClassifierBypassed, first.Classification.DecisionMethod);
     }
 
     [TestMethod]
-    public async Task SharedGenerationDoesNotSendRawQuestionToLlm()
+    public async Task DeepGenerationSendsEachRawQuestionToLlm()
     {
         var llm = new TrackingLlmClient();
         var service = TestSupport.NewReadingService(llm);
@@ -36,10 +42,12 @@ public sealed class ReadingGenerationTests
             TestSupport.DestinyRequest("Should I leave my company?", readingMode: ReadingMode.DEEP),
             CancellationToken.None);
 
-        Assert.AreEqual(CacheStatus.MISS, first.CacheStatus);
-        Assert.AreEqual(CacheStatus.HIT, second.CacheStatus);
-        Assert.AreEqual(1, llm.CallCount);
-        Assert.IsNull(llm.ReceivedQuestions.Single());
+        Assert.AreEqual(CacheStatus.SKIPPED, first.CacheStatus);
+        Assert.AreEqual(CacheStatus.SKIPPED, second.CacheStatus);
+        Assert.AreEqual(2, llm.CallCount);
+        CollectionAssert.AreEqual(
+            new[] { "Should I change my job?", "Should I leave my company?" },
+            llm.ReceivedQuestions);
     }
 
     [TestMethod]
@@ -102,5 +110,17 @@ public sealed class ReadingGenerationTests
 
         await Task.WhenAll(work);
         Assert.AreEqual(2, maximum);
+    }
+
+    private sealed class ThrowingQuestionClassifier : IQuestionClassifier
+    {
+        public Task<ClassificationResult> ClassifyAsync(
+            string? question,
+            string locale,
+            CancellationToken cancellationToken) =>
+            throw new AssertFailedException("DEEP readings must bypass the classifier.");
+
+        public bool CanUseSharedCache(ClassificationResult classification) =>
+            throw new AssertFailedException("DEEP readings must bypass classifier cache decisions.");
     }
 }

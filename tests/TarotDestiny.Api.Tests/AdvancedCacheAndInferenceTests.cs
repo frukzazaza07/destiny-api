@@ -16,7 +16,7 @@ public sealed class AdvancedCacheAndInferenceTests
     [TestMethod]
     public async Task RedisMissReadsPostgresRepopulatesCacheAndIncrementsHits()
     {
-        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.DEEP);
+        var request = TestSupport.DestinyRequest(readingMode: ReadingMode.STANDARD);
         var classification = TestSupport.CareerChangeClassification();
         var response = TestSupport.ValidResponse(request, classification);
         var cacheOptions = new TarotCacheOptions();
@@ -36,7 +36,7 @@ public sealed class AdvancedCacheAndInferenceTests
     }
 
     [TestMethod]
-    public async Task ConcurrentMissesGenerateOnlyOnce()
+    public async Task ConcurrentDeepReadingsEachUseFullLlm()
     {
         var llm = new DelayedLlmClient();
         var service = TestSupport.NewReadingService(llm);
@@ -45,13 +45,12 @@ public sealed class AdvancedCacheAndInferenceTests
         var responses = await Task.WhenAll(
             Enumerable.Range(0, 12).Select(_ => service.GenerateAsync(request, CancellationToken.None)));
 
-        Assert.AreEqual(1, llm.CallCount);
-        Assert.AreEqual(1, responses.Count(response => response.CacheStatus == CacheStatus.MISS));
-        Assert.AreEqual(11, responses.Count(response => response.CacheStatus == CacheStatus.HIT));
+        Assert.AreEqual(12, llm.CallCount);
+        Assert.IsTrue(responses.All(response => response.CacheStatus == CacheStatus.SKIPPED));
     }
 
     [TestMethod]
-    public async Task RequestedVariantIsGeneratedOnceAndThenReused()
+    public async Task RequestedDeepVariantIsGeneratedEveryTime()
     {
         var llm = new TrackingLlmClient();
         var service = TestSupport.NewReadingService(llm);
@@ -62,9 +61,9 @@ public sealed class AdvancedCacheAndInferenceTests
         var generated = await service.GenerateAsync(secondVariant, CancellationToken.None);
         var reused = await service.GenerateAsync(secondVariant, CancellationToken.None);
 
-        Assert.AreEqual(2, llm.CallCount);
-        Assert.AreEqual(CacheStatus.MISS, generated.CacheStatus);
-        Assert.AreEqual(CacheStatus.HIT, reused.CacheStatus);
+        Assert.AreEqual(3, llm.CallCount);
+        Assert.AreEqual(CacheStatus.SKIPPED, generated.CacheStatus);
+        Assert.AreEqual(CacheStatus.SKIPPED, reused.CacheStatus);
     }
 
     [TestMethod]

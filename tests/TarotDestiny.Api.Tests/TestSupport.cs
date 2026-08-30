@@ -67,9 +67,10 @@ internal static class TestSupport
         IAnswerCache? cache = null,
         LlmOptions? llmOptions = null,
         IGeneratedAnswerStore? generatedAnswerStore = null,
-        TarotCacheOptions? tarotCacheOptions = null)
+        TarotCacheOptions? tarotCacheOptions = null,
+        IQuestionClassifier? classifier = null)
     {
-        var classifier = NewClassifier();
+        classifier ??= NewClassifier();
         var cacheSettings = Options.Create(tarotCacheOptions ?? new TarotCacheOptions());
         var gateSettings = Options.Create(llmOptions ?? new LlmOptions());
         var catalog = new TarotCatalog();
