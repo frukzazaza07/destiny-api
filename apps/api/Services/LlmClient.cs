@@ -323,6 +323,7 @@ public sealed class LlmClient(
                 You are a professional Tarot reading writer. Create a detailed, reflective, premium Tarot reading in {{LocaleName(payload.Locale)}}.
 
                 {{LanguageInstruction(payload.Locale)}}
+                LANGUAGE: {{LocaleName(payload.Locale)}} ONLY.
 
                 INPUT AND AUTHORITY
                 - The supplied question and card selection are authoritative input data.
