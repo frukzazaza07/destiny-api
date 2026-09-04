@@ -56,6 +56,7 @@ public sealed class LlmOptions
     public int RetryCount { get; set; } = 1;
     public string DefaultTier { get; set; } = "DEEP";
     public List<LlmTierOptions> Tiers { get; set; } = [];
+    public bool BypassLocalWorkers { get; set; }
     public bool EnableCloudFallback { get; set; }
     public bool AllowCloudForRequestsWithRawQuestion { get; set; }
     public int CircuitBreakerFailureThreshold { get; set; } = 2;

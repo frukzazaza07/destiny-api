@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "../globals.css";
 
 export const metadata: Metadata = {
-  title: "Tarot Destiny",
-  description: "Symbolic Tarot guidance with reusable AI reading cache"
+  title: "Tarot Destiny"
 };
 
 export default function RootLayout({
@@ -12,7 +11,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="th">
       <body>{children}</body>
     </html>
   );

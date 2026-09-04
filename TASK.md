@@ -2482,3 +2482,103 @@ startup_warmup_cancelled
 - [ ] Shadow and write-only rollout observations reviewed.
 - [ ] Approved intents enabled gradually for cache reads.
 - [ ] `SUMMARY.md` updated after the authoritative runtime policy changes.
+
+---
+
+# AdSense Approval-Ready Monetization
+
+## Completed Implementation
+
+- [x] Add `/th` and `/en` reading routes with matching document language and permanently redirect `/` to `/th`.
+- [x] Separate public and admin root layouts, keep `/admin` noindex and Google-script-free, and hide the public Admin link in Production.
+- [x] Add localized public navigation, footer, language switching, consent settings, and About, Contact, Privacy, Terms, Cookie Policy, and Disclaimer page scaffolds.
+- [x] State that the service is for adults 18+ and for entertainment/self-reflection rather than medical, legal, financial, or other professional advice.
+- [x] Add a typed local MDX guide system with draft control, paired translations, authorship, publication/update metadata, canonical URLs, and hreflang metadata.
+- [x] Add all eight Thai/English guide pairs as private drafts pending owner review.
+- [x] Add useful crawlable explanatory content and responsible guide links below the reading tool while keeping reading routes ad-free.
+- [x] Add canonical and Open Graph metadata, article structured data, `/sitemap.xml`, `/robots.txt`, and `/ads.txt`, excluding drafts and `/admin` where required.
+- [x] Add fail-closed server runtime validation for site, AdSense, GA4, rollout, and trusted Cloudflare-country configuration.
+- [x] Expose a valid AdSense verification meta tag and exact seller line independently of the ad-serving rollout flag.
+- [x] Add one labelled, responsive, non-personalized manual ad placement for eligible published guide pages, with reserved space and no empty container on invalid configuration.
+- [x] Restrict GA4 to sanitized public guide pageviews, locale, and route without reading questions, answers, topics, cards, identities, authentication data, or admin activity.
+- [x] Add fail-closed Thailand, EEA/UK/Swiss, and unknown-region consent handling plus a persistent consent-settings control.
+- [x] Add structural content validation for the sixteen guide files and a readiness gate requiring exactly eight reviewed, published translation pairs.
+- [x] Add browser coverage for redirects, locale metadata, navigation, legal routes, sitemap, robots, ads.txt, admin isolation, regional fail-closed behavior, keyboard entry, and responsive overflow.
+- [x] Pass content structural validation, TypeScript typechecking, the production build, fifteen browser checks, and visual review at 360 px and 1440 px.
+- [x] Document monetization configuration, deployment, consent, AdSense, legal-review, and safe testing procedures in `apps/web/MONETIZATION.md`.
+
+## Remaining Launch Work
+
+- [ ] Owner supplies, personally reviews, dates, and publishes all sixteen guide articles; the readiness validator must report all eight bilingual pairs ready.
+- [ ] Owner and appropriate legal reviewer finalize operator identity, contact details, Privacy, Terms, Cookie Policy, Disclaimer, and Thailand consent wording.
+- [ ] Configure the production domain behind Cloudflare, protect direct origin access, validate `CF-IPCountry`, and prevent unsafe consent-varying cache behavior.
+- [ ] Supply the real production `SITE_URL`, contact address, AdSense publisher/slot IDs, and GA4 measurement ID without committing environment values.
+- [ ] Configure and publish Google's certified three-choice EEA/UK/Swiss CMP message and verify consent-mode behavior in the Google account.
+- [ ] Submit the production site to AdSense and wait until Google reports it as Ready while keeping Auto Ads, anchors, and vignettes disabled.
+- [ ] Re-run production consent, indexing, navigation, ad-spacing, Core Web Vitals, and invalid-traffic checks without clicking a live ad.
+- [ ] Enable analytics and the single guide ad slot only after all content, legal, consent, provider, and deployment gates pass.
+- [ ] Review policy status, invalid traffic, countries, engagement, Core Web Vitals, and revenue monthly after launch.
+
+---
+
+# Next Task — Rewarded Ads for One DEEP Reading
+
+## Product Requirement
+
+- [ ] Let a user voluntarily complete **three rewarded ads** to earn **one single-use DEEP reading credit**.
+- [ ] Do **not** reward, request, encourage, or count ad clicks. Google forbids compensating users for clicks and other artificial interaction with regular ads. Only a provider-confirmed rewarded-ad completion may count. See [AdSense program policies](https://support.google.com/adsense/answer/48182?hl=en) and [ad placement policies](https://support.google.com/adsense/answer/1346295?hl=en).
+- [ ] Describe the action accurately in Thai and English, for example: “Watch 3 optional rewarded ads to unlock one DEEP reading.” Never use “click three ads” or “watch to support us.”
+- [ ] Make every rewarded ad a separate, explicit opt-in action. The user can close or decline it, and the normal free STANDARD reading remains usable without penalty.
+- [ ] Keep the reward non-transferable, usable only inside this service, and without cash value, in line with [Google rewarded inventory policy](https://support.google.com/adsense/answer/9121589?hl=en-EN).
+- [ ] If an ad is unavailable, has no fill, errors, or cannot load because consent was not granted, show a clear message. Do not substitute a normal display ad and do not ask the user to click an ad.
+
+## Reward and Entitlement Rules
+
+- [ ] Count only three distinct provider success events equivalent to Google Publisher Tag's `rewardedSlotGranted`. Opening, viewing part of, clicking, closing, or receiving a `rewardedSlotClosed` event does not count.
+- [ ] Request and display rewarded ads sequentially; never keep more than one rewarded request active.
+- [ ] Store progress authoritatively on the server. Browser state may display progress but must not grant DEEP access.
+- [ ] For authenticated users, associate progress and credits with the user account. If anonymous rewards are supported, use a backend-issued opaque reward session; do not treat `localStorage`, cookies, or a client boolean as proof.
+- [ ] After the third valid completion, atomically convert the progress into one single-use DEEP credit and reset the completion count.
+- [ ] Atomically consume the credit when the API authorizes the DEEP request so concurrent requests cannot reuse it.
+- [ ] Existing paid/premium DEEP entitlement takes priority and must not consume an ad-earned credit.
+- [ ] Progress and an unused ad-earned credit expire after 24 hours. Limit issuance to one ad-funded DEEP credit per user or reward session per rolling 24 hours unless a later cost and abuse review approves another limit.
+- [ ] Reissue a consumed credit only when the server fails before returning a valid reading. User cancellation and client/network abandonment after a valid response do not automatically create another credit.
+
+## Provider Feasibility Gate
+
+- [ ] Keep guide-page display ads on AdSense, but evaluate **Google Ad Manager rewarded web inventory** for this feature because its web API exposes rewarded lifecycle events. See [rewarded ads for web](https://support.google.com/admanager/answer/9116812?hl=en) and the [GPT rewarded-ad sample](https://developers.google.com/publisher-tag/samples/display-rewarded-ad).
+- [ ] Do not assume AdSense Offerwall can implement the custom three-completion counter. Its documented rewarded-ad choice grants access after a completed ad and is managed by Google; use it only if a one-completion content-access model is accepted. See [AdSense Offerwall rewarded ad](https://support.google.com/adsense/answer/12726063?hl=en).
+- [ ] Complete a provider/account eligibility spike before implementation. Confirm that rewarded web inventory is available for this publisher, Thailand traffic, the production domain, and the intended mobile/desktop placements.
+- [ ] Record and accept the fraud model before launch: Google Ad Manager does not currently support server-side verification for rewarded ads on the web, so a browser grant event can be forged. Authentication, signed short-lived sessions, idempotency, rate limits, replay protection, and the daily cap reduce risk but do not make the signal cryptographically authoritative.
+- [ ] If that residual fraud risk is unacceptable, do not ship the three-ad feature. Use the provider-managed one-ad Offerwall flow or retain paid-only DEEP access instead.
+- [ ] Keep the rewarded-access feature disabled by default in Development, test, unknown regions, and Production until policy, consent, abuse, and cost reviews pass.
+
+## Consent, Privacy, and Placement
+
+- [ ] Load no rewarded-ad script before the visitor has given the advertising consent required by the regional consent policy in the AdSense rollout plan.
+- [ ] Never send reading questions, generated answers, selected cards/topics, user IDs, authentication tokens, or DEEP entitlement data to the advertising provider.
+- [ ] Put rewarded controls on a dedicated unlock surface, clearly labelled as advertising and separated from navigation, reading controls, and card interactions to prevent accidental clicks.
+- [ ] Keep `/admin`, `/th`, `/en`, reading results, and legal pages free of regular display ads. A rewarded ad may appear only after an explicit unlock action; it must never launch automatically.
+- [ ] Update Privacy, Terms, Cookie Policy, and consent copy to explain the rewarded provider, purpose, data use, expiry, withdrawal effects, reward limits, and lack of cash value before enabling the feature.
+
+## Proposed API and Storage Work
+
+- [ ] Add an authenticated or opaque-session reward status endpoint that returns the valid completion count, expiry, available DEEP credits, and next eligible time.
+- [ ] Add a reward-session endpoint that issues a signed, short-lived, single-purpose nonce for one rewarded-ad attempt.
+- [ ] Add an idempotent grant endpoint that accepts one nonce once, records the provider grant event, applies rate limits, and returns updated progress. It must reject expired, replayed, mismatched, or already-used nonces.
+- [ ] Extend DEEP authorization to consume either the existing premium entitlement or one valid ad-earned credit without trusting client-supplied entitlement flags.
+- [ ] Persist only the minimum reward ledger needed for correctness and abuse controls; never persist ad click data or reading content in it.
+- [ ] Document all new endpoints, authentication, request/response schemas, error envelopes, and rate-limit responses in generated OpenAPI and Swagger UI, following the repository API-documentation requirements.
+
+## Verification and Acceptance Criteria
+
+- [ ] Zero, one, or two valid rewarded grants cannot authorize DEEP; exactly three distinct valid grants issue one credit.
+- [ ] Ad clicks, partial views, ad-ready events, closes, skips, errors, and no-fill responses never increment progress.
+- [ ] Replaying a grant, refreshing the page, changing browser state, or sending concurrent requests cannot duplicate progress or credits.
+- [ ] One credit authorizes exactly one DEEP reading and is consumed at most once under concurrency.
+- [ ] Paid premium users keep DEEP access without watching ads or consuming an ad-earned credit.
+- [ ] Declining advertising consent prevents ad requests and leaves STANDARD readings functional.
+- [ ] With the feature flag off, current DEEP authorization and all public/admin routes behave exactly as before.
+- [ ] Browser tests cover Thai and English wording, keyboard access, opt-in/close behavior, progress recovery, consent withdrawal, no-fill, provider errors, and one active rewarded slot.
+- [ ] API tests cover authentication, expiry, daily caps, nonce signing, idempotency, replay protection, rate limiting, atomic grant/consume behavior, and failure recovery.
+- [ ] Production rollout remains blocked until provider eligibility is confirmed, legal/policy copy is reviewed, consent tests pass, and live-ad testing avoids all manual clicks.

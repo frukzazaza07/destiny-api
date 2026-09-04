@@ -202,6 +202,62 @@ public sealed class LlmClientTests
         Assert.AreEqual("CLOUD_GPU", response.InferenceProvider);
     }
 
+    [TestMethod]
+    public async Task BypassesLocalWorkersAndUsesCloudDirectlyWhenExplicitlyEnabled()
+    {
+        var request = TestSupport.DestinyRequest(locale: "en", readingMode: ReadingMode.DEEP);
+        var classification = TestSupport.CareerChangeClassification();
+        var payload = new RuleInterpretationEngine(new TarotCatalog()).Build(request, classification);
+        var called = new List<string>();
+        var content = ValidContent(request);
+        var handler = new StubHandler(message =>
+        {
+            called.Add(message.RequestUri!.Host);
+            return Task.FromResult(OpenAiResponse(content));
+        });
+        var client = NewRoutedClient(handler,
+        [
+            Worker("local", "http://local.test/v1", LlmWorkerProvider.LOCAL_GPU, 0),
+            Worker("cloud", "http://cloud.test/v1", LlmWorkerProvider.CLOUD_GPU, 100)
+        ], enableCloud: true, bypassLocal: true, allowCloudForRawQuestion: true);
+
+        var response = await client.GenerateAsync(request, classification, payload, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "cloud.test" }, called);
+        Assert.AreEqual("cloud", response.InferenceWorker);
+        Assert.AreEqual("CLOUD_GPU", response.InferenceProvider);
+    }
+
+    [TestMethod]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    public async Task BypassFailsSafelyWhenCloudIsNotEligible(
+        bool enableCloud,
+        bool allowCloudForRawQuestion)
+    {
+        var request = TestSupport.DestinyRequest(locale: "en", readingMode: ReadingMode.DEEP);
+        var classification = TestSupport.CareerChangeClassification();
+        var payload = new RuleInterpretationEngine(new TarotCatalog()).Build(request, classification);
+        var called = new List<string>();
+        var content = ValidContent(request);
+        var handler = new StubHandler(message =>
+        {
+            called.Add(message.RequestUri!.Host);
+            return Task.FromResult(OpenAiResponse(content));
+        });
+        var client = NewRoutedClient(handler,
+        [
+            Worker("local", "http://local.test/v1", LlmWorkerProvider.LOCAL_GPU, 0),
+            Worker("cloud", "http://cloud.test/v1", LlmWorkerProvider.CLOUD_GPU, 100)
+        ], enableCloud, bypassLocal: true, allowCloudForRawQuestion);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            client.GenerateAsync(request, classification, payload, CancellationToken.None));
+
+        Assert.AreEqual("No healthy LLM worker is currently eligible for this reading.", exception.Message);
+        Assert.AreEqual(0, called.Count);
+    }
+
     private static LlmClient NewClient(HttpMessageHandler handler) =>
         new(
             new HttpClient(handler),
@@ -218,7 +274,9 @@ public sealed class LlmClientTests
     private static LlmClient NewRoutedClient(
         HttpMessageHandler handler,
         List<LlmWorkerOptions> workers,
-        bool enableCloud) =>
+        bool enableCloud,
+        bool bypassLocal = false,
+        bool allowCloudForRawQuestion = false) =>
         new(
             new HttpClient(handler),
             Options.Create(new LlmOptions
@@ -226,6 +284,8 @@ public sealed class LlmClientTests
                 RetryCount = 0,
                 TimeoutSeconds = 5,
                 EnableCloudFallback = enableCloud,
+                BypassLocalWorkers = bypassLocal,
+                AllowCloudForRequestsWithRawQuestion = allowCloudForRawQuestion,
                 DefaultTier = "CORE",
                 Tiers =
                 [

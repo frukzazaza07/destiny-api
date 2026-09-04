@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import type { Locale } from "../lib/i18n";
 
-type Locale = "en" | "th";
 type QuestionMode = "TOPIC" | "QUESTION";
 type Spread = "DESTINY_3" | "DAILY_1";
 type Orientation = "UPRIGHT" | "REVERSED";
@@ -267,8 +268,9 @@ const topics: Array<{
     }
   ];
 
-export default function Home() {
-  const [locale, setLocale] = useState<Locale>("en");
+export default function ReadingClient({ initialLocale }: { initialLocale: Locale }) {
+  const router = useRouter();
+  const locale = initialLocale;
   const [spread, setSpread] = useState<Spread>("DESTINY_3");
   const [questionMode, setQuestionMode] = useState<QuestionMode>("TOPIC");
   const [topic, setTopic] = useState<TopicId>("CAREER");
@@ -306,10 +308,6 @@ export default function Home() {
   const isWorking = phase === "SHUFFLING" || phase === "RESOLVING" || phase === "GENERATING";
   const controlsLocked = isWorking || phase === "REVEALING";
   const phaseStatus = getPhaseStatus(phase, readingMode, shuffleVisualStep, text);
-
-  useEffect(() => {
-    document.documentElement.lang = locale;
-  }, [locale]);
 
   useEffect(() => {
     let active = true;
@@ -385,8 +383,9 @@ export default function Home() {
   }
 
   function changeLocale(nextLocale: Locale) {
-    setLocale(nextLocale);
+    if (nextLocale === locale) return;
     resetReadingFlow();
+    router.push(`/${nextLocale}`);
   }
 
   function changeSpread(nextSpread: Spread) {
@@ -577,13 +576,13 @@ export default function Home() {
       : text.retryReading;
 
   return (
-    <main className="shell">
+    <div className="shell">
       <section className="workspace">
         <aside className="control-panel">
           <div>
             <p className="eyebrow">Tarot Destiny</p>
             <h1>{text.headline}</h1>
-            <a className="admin-link" href="/admin"><Settings aria-hidden="true" size={14} /> Admin</a>
+            {isDev && <a className="admin-link" href="/admin"><Settings aria-hidden="true" size={14} /> Admin</a>}
           </div>
 
           {readingMode === "DEEP" && modelTiers.length > 0 && (
@@ -841,7 +840,7 @@ export default function Home() {
           )}
         </section>
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -1113,12 +1112,7 @@ function apiUrl(path: string) {
 function getApiBaseUrl() {
   const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configuredBase) return configuredBase.replace(/\/+$/, "");
-
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:5000`;
-  }
-
-  return "http://localhost:5000";
+  return "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

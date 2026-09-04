@@ -326,12 +326,15 @@ internal sealed class InferenceWorkerPool(
     public IReadOnlyList<LlmWorkerDefinition> OrderCandidates(
         string tierId,
         IReadOnlyList<LlmWorkerDefinition> workers,
+        bool bypassLocalWorkers,
         bool enableCloudFallback,
         bool allowCloudForRequest)
     {
         var now = DateTimeOffset.UtcNow;
         var sequence = Interlocked.Increment(ref _selectionSequence);
         var available = workers
+            .Where(worker => !bypassLocalWorkers
+                || worker.Provider != LlmWorkerProvider.LOCAL_GPU)
             .Where(worker => worker.Provider != LlmWorkerProvider.CLOUD_GPU
                 || (enableCloudFallback && allowCloudForRequest))
             .Select(worker => (Worker: worker, Runtime: GetRuntime(tierId, worker)))

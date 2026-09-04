@@ -5,6 +5,9 @@ obj/
 node_modules/
 .next/
 out/
+test-results/
+playwright-report/
+blob-report/
 *.user
 *.suo
 *.log

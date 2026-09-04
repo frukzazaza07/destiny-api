@@ -123,6 +123,7 @@ public sealed class LlmClient(
         var workers = _workerPool.OrderCandidates(
             plan.TierId,
             plan.Workers,
+            _options.BypassLocalWorkers,
             _options.EnableCloudFallback,
             allowCloudForRequest);
         if (workers.Count == 0)
@@ -230,8 +231,6 @@ public sealed class LlmClient(
         dynamic llmRequest,
         CancellationToken cancellationToken)
     {
-        var aaa = llmRequest.messages[1].content;
-        Console.WriteLine(aaa);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(worker.TimeoutSeconds));
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, worker.Endpoint)

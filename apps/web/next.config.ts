@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createMDX from "@next/mdx";
 
 const privateNetworkDevOrigins = [
   "10.*.*.*",
@@ -8,7 +9,19 @@ const privateNetworkDevOrigins = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: privateNetworkDevOrigins,
-  output: "standalone"
+  pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
+  output: "standalone",
+  trailingSlash: false,
+  skipTrailingSlashRedirect: true
 };
 
-export default nextConfig;
+const withMDX = createMDX({
+  options: {
+    remarkPlugins: [
+      "remark-frontmatter",
+      ["remark-mdx-frontmatter", { name: "frontmatter" }]
+    ]
+  }
+});
+
+export default withMDX(nextConfig);

@@ -110,7 +110,7 @@ export default function AdminPage() {
           <p>Tarot Destiny · Operations</p>
           <h1>Cache & classifier control room</h1>
         </div>
-        <a href="/"><ArrowLeft size={16} /> Reading app</a>
+        <a href="/th"><ArrowLeft size={16} /> Reading app</a>
       </header>
 
       <section className={styles.keybar}>
@@ -188,5 +188,5 @@ async function readData<T>(response: Response): Promise<T> { const body = await 
 function apiUrl(path: string) {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configured) return `${configured.replace(/\/+$/, "")}${path}`;
-  return `${window.location.protocol}//${window.location.hostname}:5000${path}`;
+  return path;
 }
