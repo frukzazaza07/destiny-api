@@ -335,6 +335,7 @@ public sealed class LlmClient(
                 - Do not invent missing user details, events, dates, or factual claims.
 
                 OUTPUT FORMAT
+                LANGUAGE: {{LocaleName(payload.Locale)}} ONLY.
                 - Return exactly one valid JSON object.
                 - Do not include Markdown, code fences, commentary, or text outside the JSON object.
                 - Match the supplied response schema exactly.
