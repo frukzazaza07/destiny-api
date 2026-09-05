@@ -487,7 +487,7 @@ const THAILAND_COPY = {
       "Allow Google Analytics 4 to record this site's public route and language. Reading questions, cards, answers, and account data are never sent.",
     advertisingHeading: "Advertising",
     advertisingDescription:
-      "Allow one non-personalized Google ad on eligible guide pages. Ads never appear in the reading tool, admin, or legal pages.",
+      "Allow non-personalized Google ads on eligible guide pages and optional Google Ad Manager rewarded ads that load only when you explicitly request one in the reading tool.",
     servicesDisabled: "Optional Google services are not enabled on this site.",
     decline: "Decline optional",
     save: "Save choices",
@@ -505,7 +505,7 @@ const THAILAND_COPY = {
       "อนุญาตให้ Google Analytics 4 บันทึกเฉพาะเส้นทางหน้าสาธารณะและภาษาของเว็บไซต์ เราไม่ส่งคำถาม ไพ่ คำอ่าน หรือข้อมูลบัญชีของคุณ",
     advertisingHeading: "โฆษณา",
     advertisingDescription:
-      "อนุญาตโฆษณา Google แบบไม่ปรับตามโปรไฟล์หนึ่งตำแหน่งเฉพาะในหน้าคู่มือที่เข้าเกณฑ์ ไม่มีโฆษณาในหน้าอ่านไพ่ หน้าผู้ดูแล หรือหน้ากฎหมาย",
+      "อนุญาตโฆษณา Google แบบไม่ปรับตามโปรไฟล์ในหน้าคู่มือ และโฆษณาแบบให้รางวัลของ Google Ad Manager ซึ่งโหลดเฉพาะเมื่อคุณกดขอในเครื่องมืออ่านไพ่แต่ละครั้ง",
     servicesDisabled: "ขณะนี้เว็บไซต์ไม่ได้เปิดใช้บริการเสริมของ Google",
     decline: "ปฏิเสธบริการเสริม",
     save: "บันทึกตัวเลือก",

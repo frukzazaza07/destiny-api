@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Locale } from "../lib/i18n";
+import RewardedDeepUnlock, { type RewardedDeepStatus } from "./rewarded-deep-unlock";
 
 type QuestionMode = "TOPIC" | "QUESTION";
 type Spread = "DESTINY_3" | "DAILY_1";
@@ -69,6 +70,9 @@ type ReadingOptions = {
     enabled: boolean;
     entitled: boolean;
     upgradeUrl: string | null;
+    authenticated: boolean;
+    premiumExpiresAt: string | null;
+    availableAdEarnedCredits: number;
   };
   modelTiers: Array<{ id: string; model: string; available: boolean }>;
 };
@@ -281,8 +285,12 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
   const [deepAccess, setDeepAccess] = useState<ReadingOptions["deepReading"]>({
     enabled: false,
     entitled: false,
-    upgradeUrl: null
+    upgradeUrl: null,
+    authenticated: false,
+    premiumExpiresAt: null,
+    availableAdEarnedCredits: 0
   });
+  const [rewardUnlockAvailable, setRewardUnlockAvailable] = useState(false);
   const [shuffle, setShuffle] = useState<ShuffleResponse | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [cards, setCards] = useState<SelectedCard[]>([]);
@@ -308,11 +316,19 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
   const isWorking = phase === "SHUFFLING" || phase === "RESOLVING" || phase === "GENERATING";
   const controlsLocked = isWorking || phase === "REVEALING";
   const phaseStatus = getPhaseStatus(phase, readingMode, shuffleVisualStep, text);
+  const handleRewardStatus = useCallback((status: RewardedDeepStatus) => {
+    setRewardUnlockAvailable(status.enabled);
+    setDeepAccess((current) => ({
+      ...current,
+      entitled: current.premiumExpiresAt !== null || status.availableDeepCredits > 0,
+      availableAdEarnedCredits: status.availableDeepCredits,
+    }));
+  }, []);
 
   useEffect(() => {
     let active = true;
 
-    fetch(apiUrl("/api/readings/options"))
+    fetch(apiUrl("/api/readings/options"), { credentials: "include", cache: "no-store" })
       .then((response) => (response.ok ? readApiData<ReadingOptions>(response) : null))
       .then((options: ReadingOptions | null) => {
         if (active && options?.deepReading) {
@@ -410,7 +426,13 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
 
   function changeReadingMode(nextMode: ReadingMode) {
     if (nextMode === "DEEP" && !deepAccess.entitled) {
+      if (rewardUnlockAvailable) {
+        document.getElementById("rewarded-deep-unlock")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.getElementById("rewarded-deep-heading")?.focus({ preventScroll: true });
+        return;
+      }
       if (deepAccess.upgradeUrl) window.location.assign(deepAccess.upgradeUrl);
+      else window.location.assign(`/${locale}/login`);
       return;
     }
 
@@ -441,6 +463,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spread }),
+        credentials: "include",
         signal: controller.signal
       });
       const [response] = await Promise.all([
@@ -495,6 +518,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selectedIndexes: selected }),
+        credentials: "include",
         signal: controller.signal
       });
 
@@ -532,6 +556,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
           modelTier: readingMode === "DEEP" ? modelTier : null,
           cards: resolvedCards
         }),
+        credentials: "include",
         signal: controller.signal
       });
       const [generated] = await Promise.all([
@@ -544,6 +569,10 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
       if (!isCurrent(version)) return;
       activeRequest.current = null;
       setReading(nextReading);
+      if (readingMode === "DEEP" && !deepAccess.premiumExpiresAt && deepAccess.availableAdEarnedCredits > 0) {
+        const remaining = deepAccess.availableAdEarnedCredits - 1;
+        setDeepAccess((current) => ({ ...current, availableAdEarnedCredits: remaining, entitled: remaining > 0 }));
+      }
       setFailureStep(null);
       setPhase("REVEALING");
     } catch (err) {
@@ -634,6 +663,12 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
             </div>
           </div>
 
+          <RewardedDeepUnlock
+            locale={locale}
+            premiumEntitled={deepAccess.premiumExpiresAt !== null}
+            onStatus={handleRewardStatus}
+          />
+
           <div className="field">
             <label>{text.readingStyle}</label>
             <div className="segments reading-mode" role="group" aria-label={text.readingStyle}>
@@ -652,7 +687,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
                 className={readingMode === "DEEP" ? "active premium-mode" : "premium-mode"}
                 aria-pressed={readingMode === "DEEP"}
                 onClick={() => changeReadingMode("DEEP")}
-                disabled={controlsLocked || !deepAccess.enabled || (!deepAccess.entitled && !deepAccess.upgradeUrl)}
+                disabled={controlsLocked || !deepAccess.enabled}
                 title={!deepAccess.entitled ? text.premiumRequired : undefined}
               >
                 <Sparkles aria-hidden="true" size={16} />

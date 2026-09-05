@@ -88,6 +88,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
         "This policy explains the information processed when you visit Tarot Destiny. The final operator identity, contact details, and retention schedule must be reviewed and completed before production launch.",
       sections: [
         {
+          heading: "Accounts and premium access",
+          paragraphs: [
+            "If you create or receive an account, we store the email address, a one-way password hash, verification and security status, active sessions, roles, and premium-entitlement history needed to operate and protect the account. We never store a plaintext password or attach reading questions and answers to advertising records.",
+            "Disabling an account immediately revokes its sessions. Account and entitlement audit records may be retained for documented security, fraud-prevention, legal, and accounting periods. You can request access, correction, or deletion through the Contact page; some records may be retained where law or legitimate security needs require it."
+          ]
+        },
+        {
           heading: "Information used to provide a reading",
           paragraphs: [
             "The service processes the locale, chosen spread, topic or question, and selected cards to generate a result. Reading inputs and results are operational service data; they are not sent to Google Analytics or Google advertising products.",
@@ -99,6 +106,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
           paragraphs: [
             "If analytics is enabled and you give the required consent, Google Analytics 4 receives public pageview information limited by our implementation to the public route and locale. We do not intentionally send reading questions, answers, selected topics or cards, user identifiers, authentication data, or admin activity.",
             "Google may process device, browser, network, cookie, and identifier information under its own terms. Analytics remains off when configuration or the required consent is missing."
+          ]
+        },
+        {
+          heading: "Rewarded DEEP access",
+          paragraphs: [
+            "If the feature is enabled and you consent to advertising, Google Ad Manager may show a rewarded ad only after your explicit request. We send no reading question, answer, selected card or topic, user ID, authentication token, or DEEP entitlement data to the advertising provider.",
+            "The service keeps a minimal reward-session, one-time attempt, completion, and credit ledger for correctness and abuse prevention. Progress and unused credits expire after 24 hours. Withdrawing advertising consent blocks future ad requests but does not erase a credit already validly earned."
           ]
         },
         {
@@ -137,6 +151,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
         "By using Tarot Destiny, you agree to these terms. If you do not agree, do not use the service.",
       sections: [
         {
+          heading: "Accounts and Premium DEEP",
+          paragraphs: [
+            "Account credentials are personal and must not be shared. Premium DEEP access is available only while the server records an active, unrevoked entitlement for an enabled and verified account; browser state does not grant access.",
+            "We may suspend accounts, revoke sessions, or revoke access when needed to protect the service, enforce these terms, address abuse, or comply with law. Expiry and revocation take effect without requiring the browser to refresh its stored session."
+          ]
+        },
+        {
           heading: "Eligibility and purpose",
           paragraphs: [
             "You must be at least 18 years old. The service is offered for personal entertainment, education, and self-reflection. It does not provide medical, mental-health, legal, financial, employment, relationship, or other professional advice."
@@ -147,6 +168,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
           paragraphs: [
             "Readings are generated interpretations, may be incomplete or wrong, and cannot verify facts, another person's thoughts, or future events. You remain responsible for checking information and for every action or decision you take.",
             "Never delay urgent help, treatment, legal advice, or financial guidance because of this service."
+          ]
+        },
+        {
+          heading: "Optional rewarded DEEP credits",
+          paragraphs: [
+            "When available, each rewarded ad is a separate voluntary choice. Only the provider's completed-ad grant event counts; clicks, partial views, closes, skips, errors, and unavailable ads do not count. Never click an ad to seek a reward.",
+            "A completed bundle grants the database-configured number of single-use DEEP credits, limited to one bundle per rolling 24 hours. Credits expire after 24 hours, are non-transferable, usable only in this service, and have no cash value. Premium access is checked first and never consumes an ad-earned credit. STANDARD readings remain available without participating."
           ]
         },
         {
@@ -194,7 +222,7 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
         {
           heading: "Advertising storage",
           paragraphs: [
-            "When Google AdSense is configured, enabled, and permitted by your choice, advertising cookies or identifiers may support non-personalized ads on published guide pages, including delivery, frequency limits, fraud prevention, and aggregated reporting. Advertising is not loaded on the reading experience or legal and admin pages."
+            "When Google AdSense is configured, enabled, and permitted by your choice, advertising cookies or identifiers may support non-personalized ads on published guide pages. Separately, Google Ad Manager may load rewarded inventory on the reading page only after explicit opt-in. Advertising storage may support delivery, frequency limits, fraud prevention, and aggregated reporting."
           ]
         },
         {
@@ -291,6 +319,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
       introduction: "นโยบายนี้อธิบายข้อมูลที่อาจถูกประมวลผลเมื่อคุณเข้าชม Tarot Destiny ต้องตรวจทานและเติมข้อมูลผู้ให้บริการ ช่องทางติดต่อ และระยะเวลาเก็บข้อมูลให้ครบก่อนเปิดใช้งานจริง",
       sections: [
         {
+          heading: "บัญชีและสิทธิ์พรีเมียม",
+          paragraphs: [
+            "หากคุณสร้างหรือได้รับบัญชี เราจะจัดเก็บอีเมล แฮชรหัสผ่านแบบย้อนกลับไม่ได้ สถานะการยืนยันและความปลอดภัย เซสชัน บทบาท และประวัติสิทธิ์พรีเมียมเท่าที่จำเป็นต่อการให้บริการและปกป้องบัญชี เราไม่เก็บรหัสผ่านแบบข้อความธรรมดา และไม่เชื่อมคำถามหรือคำตอบการอ่านไพ่กับข้อมูลโฆษณา",
+            "การปิดบัญชีจะยกเลิกทุกเซสชันทันที บันทึกบัญชีและการตรวจสอบสิทธิ์อาจถูกเก็บตามระยะเวลาที่กำหนดเพื่อความปลอดภัย การป้องกันทุจริต กฎหมาย และบัญชี คุณขอเข้าถึง แก้ไข หรือลบข้อมูลได้ผ่านหน้าติดต่อ โดยข้อมูลบางส่วนอาจต้องเก็บไว้ตามกฎหมายหรือเหตุผลด้านความปลอดภัยที่ชอบด้วยกฎหมาย"
+          ]
+        },
+        {
           heading: "ข้อมูลที่ใช้เพื่อสร้างคำอ่าน",
           paragraphs: [
             "ระบบประมวลผลภาษา รูปแบบไพ่ หัวข้อหรือคำถาม และไพ่ที่เลือกเพื่อสร้างผลการอ่าน ข้อมูลที่ใช้และผลการอ่านเป็นข้อมูลการให้บริการ และจะไม่ถูกส่งไปยัง Google Analytics หรือผลิตภัณฑ์โฆษณาของ Google",
@@ -302,6 +337,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
           paragraphs: [
             "หากเปิด Google Analytics 4 และคุณให้ความยินยอมที่จำเป็น ระบบจะส่งเฉพาะข้อมูลการเปิดหน้าสาธารณะ เส้นทาง และภาษาเท่าที่การติดตั้งของเรากำหนด เราไม่ตั้งใจส่งคำถาม คำตอบ หัวข้อหรือไพ่ที่เลือก ตัวระบุผู้ใช้ ข้อมูลยืนยันตัวตน หรือกิจกรรมผู้ดูแล",
             "Google อาจประมวลผลข้อมูลอุปกรณ์ เบราว์เซอร์ เครือข่าย คุกกี้ และตัวระบุตามข้อกำหนดของตน การวิเคราะห์จะยังปิดเมื่อการตั้งค่าหรือความยินยอมที่จำเป็นไม่ครบ"
+          ]
+        },
+        {
+          heading: "สิทธิ์ DEEP จากโฆษณาแบบให้รางวัล",
+          paragraphs: [
+            "หากเปิดฟีเจอร์และคุณยินยอมด้านโฆษณา Google Ad Manager อาจแสดงโฆษณาแบบให้รางวัลหลังจากคุณกดขอแต่ละครั้งเท่านั้น เราไม่ส่งคำถาม คำตอบ ไพ่หรือหัวข้อที่เลือก รหัสผู้ใช้ โทเค็นเข้าสู่ระบบ หรือข้อมูลสิทธิ์ DEEP ให้ผู้ให้บริการโฆษณา",
+            "ระบบเก็บเฉพาะเซสชัน รหัสทดลองใช้ครั้งเดียว เหตุการณ์สำเร็จ และบัญชีเครดิตขั้นต่ำที่จำเป็นต่อความถูกต้องและการป้องกันทุจริต ความคืบหน้าและเครดิตที่ยังไม่ใช้หมดอายุใน 24 ชั่วโมง การถอนความยินยอมจะหยุดคำขอโฆษณาใหม่ แต่ไม่ลบเครดิตที่ได้รับอย่างถูกต้องแล้ว"
           ]
         },
         {
@@ -337,6 +379,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
       introduction: "เมื่อใช้ Tarot Destiny ถือว่าคุณยอมรับข้อกำหนดนี้ หากไม่ยอมรับ โปรดอย่าใช้บริการ",
       sections: [
         {
+          heading: "บัญชีและ Premium DEEP",
+          paragraphs: [
+            "ข้อมูลเข้าสู่ระบบเป็นข้อมูลส่วนบุคคลและห้ามแบ่งปัน สิทธิ์ Premium DEEP ใช้ได้เฉพาะเมื่อเซิร์ฟเวอร์พบสิทธิ์ที่ยังใช้งาน ไม่ถูกเพิกถอน และบัญชีเปิดใช้งานพร้อมยืนยันอีเมลแล้ว สถานะในเบราว์เซอร์ไม่สามารถให้สิทธิ์ได้เอง",
+            "เราอาจระงับบัญชี ยกเลิกเซสชัน หรือเพิกถอนสิทธิ์เพื่อปกป้องบริการ บังคับใช้ข้อกำหนด จัดการการใช้งานในทางที่ผิด หรือปฏิบัติตามกฎหมาย การหมดอายุและการเพิกถอนมีผลทันทีโดยไม่ต้องรอให้เบราว์เซอร์รีเฟรชเซสชัน"
+          ]
+        },
+        {
           heading: "คุณสมบัติและวัตถุประสงค์",
           paragraphs: ["คุณต้องมีอายุอย่างน้อย 18 ปี บริการนี้จัดทำเพื่อความบันเทิง การเรียนรู้ และการทบทวนตนเองส่วนบุคคล ไม่ใช่คำแนะนำทางการแพทย์ สุขภาพจิต กฎหมาย การเงิน การงาน ความสัมพันธ์ หรือวิชาชีพอื่น"]
         },
@@ -345,6 +394,13 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
           paragraphs: [
             "คำอ่านเป็นการตีความที่สร้างขึ้นและอาจไม่ครบถ้วนหรือผิดพลาด ไม่สามารถยืนยันข้อเท็จจริง ความคิดของบุคคลอื่น หรือเหตุการณ์ในอนาคต คุณต้องตรวจสอบข้อมูลและรับผิดชอบต่อทุกการกระทำและการตัดสินใจ",
             "อย่าชะลอความช่วยเหลือเร่งด่วน การรักษา คำปรึกษากฎหมาย หรือคำแนะนำการเงินเพราะบริการนี้"
+          ]
+        },
+        {
+          heading: "เครดิต DEEP จากโฆษณาแบบสมัครใจ",
+          paragraphs: [
+            "โฆษณาแบบให้รางวัลแต่ละรายการเป็นทางเลือกแยกกัน นับเฉพาะเหตุการณ์ที่ผู้ให้บริการยืนยันว่าดูสำเร็จ การคลิก ดูบางส่วน ปิด ข้าม ข้อผิดพลาด หรือไม่มีโฆษณาจะไม่นับ ห้ามคลิกโฆษณาเพื่อรับรางวัล",
+            "เมื่อครบตามจำนวนที่ฐานข้อมูลกำหนด ระบบจะให้เครดิต DEEP แบบใช้ครั้งเดียว โดยจำกัดหนึ่งชุดต่อช่วงเวลา 24 ชั่วโมง เครดิตหมดอายุใน 24 ชั่วโมง โอนไม่ได้ ใช้ได้เฉพาะบริการนี้ และไม่มีมูลค่าเงินสด ระบบตรวจสิทธิ์พรีเมียมก่อนและไม่ใช้เครดิตโฆษณาของผู้ใช้พรีเมียม การอ่าน STANDARD ยังใช้ได้โดยไม่ต้องเข้าร่วม"
           ]
         },
         {
@@ -384,7 +440,7 @@ const documents: Record<Locale, Record<InfoSlug, InfoDocument>> = {
         },
         {
           heading: "พื้นที่จัดเก็บเพื่อโฆษณา",
-          paragraphs: ["เมื่อกำหนดค่าและเปิด Google AdSense พร้อมได้รับความยินยอม คุกกี้หรือตัวระบุอาจช่วยแสดงโฆษณาแบบไม่ปรับเฉพาะบุคคลบนหน้าคู่มือ รวมถึงการจำกัดความถี่ ป้องกันทุจริต และรายงานแบบรวม จะไม่โหลดโฆษณาบนเครื่องมืออ่านไพ่ หน้ากฎหมาย หรือพื้นที่ผู้ดูแล"]
+          paragraphs: ["เมื่อกำหนดค่า เปิดใช้งาน และได้รับความยินยอม Google AdSense อาจใช้พื้นที่จัดเก็บเพื่อโฆษณาบนหน้าคู่มือ ส่วน Google Ad Manager อาจโหลดโฆษณาแบบให้รางวัลบนหน้าอ่านไพ่หลังจากผู้ใช้เลือกขออย่างชัดเจนเท่านั้น พื้นที่จัดเก็บอาจใช้เพื่อส่งโฆษณา จำกัดความถี่ ป้องกันทุจริต และรายงานแบบรวม"]
         },
         {
           heading: "การจัดการตัวเลือก",

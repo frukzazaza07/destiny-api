@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { localizedPath, type Locale } from "../lib/i18n";
 import LanguageLink from "./language-link";
+import AccountNav from "./account-nav";
 
 const shellCopy = {
   en: {
@@ -61,6 +62,7 @@ export default function PublicShell({
             <Link href={localizedPath(locale, "/contact")}>{text.contact}</Link>
           </nav>
           <LanguageLink locale={locale} />
+          <AccountNav locale={locale} />
         </div>
       </header>
 

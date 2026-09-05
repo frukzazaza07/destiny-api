@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -53,6 +58,58 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TarotDestiny");
+var dataProtectionKeysPath = builder.Configuration["Account:DataProtectionKeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = "__Host-Tarot.Csrf";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.Path = "/";
+    options.HeaderName = "X-CSRF-TOKEN";
+});
+builder.Services.AddAuthentication(AccountAuthentication.Scheme)
+    .AddCookie(AccountAuthentication.Scheme, options =>
+    {
+        options.Cookie.Name = "__Host-Tarot.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.Path = "/";
+        options.SlidingExpiration = false;
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnRedirectToLogin = context => WriteAuthenticationErrorAsync(context.Response, ResponseCode.UNAUTHORIZED, "Authentication is required."),
+            OnRedirectToAccessDenied = context => WriteAuthenticationErrorAsync(context.Response, ResponseCode.FORBIDDEN, "Administrator access is required.")
+        };
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+        }
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new ResponseDto<object, string>(null, "Too many account requests. Try again later.", ResponseCode.TOO_MANY_REQUESTS),
+            cancellationToken);
+    };
+    options.AddPolicy("login", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(1)));
+    options.AddPolicy("account-create", context => CreateRateLimitPartition(context, 3, TimeSpan.FromHours(1)));
+    options.AddPolicy("account-recovery", context => CreateRateLimitPartition(context, 5, TimeSpan.FromMinutes(15)));
+    options.AddPolicy("reward-session", context => CreateRateLimitPartition(context, 10, TimeSpan.FromHours(1)));
+    options.AddPolicy("reward-attempt", context => CreateRateLimitPartition(context, 20, TimeSpan.FromHours(1)));
+    options.AddPolicy("reward-grant", context => CreateRateLimitPartition(context, 20, TimeSpan.FromHours(1)));
+});
 
 builder.Services.AddOptions<ClassifierOptions>()
     .Bind(builder.Configuration.GetSection("Classifier"))
@@ -112,6 +169,18 @@ builder.Services.AddOptions<DeepReadingOptions>()
          !string.IsNullOrWhiteSpace(options.ClaimValue)),
         "Deep reading entitlement claim type and value are required when enabled.")
     .ValidateOnStart();
+builder.Services.AddOptions<RewardedDeepOptions>()
+    .Bind(builder.Configuration.GetSection("RewardedDeep"))
+    .Validate(options => options.SessionHours is > 0 and <= 24 &&
+        options.AttemptMinutes is > 0 and <= 15 &&
+        options.ReservationMinutes is > 0 and <= 15,
+        "Rewarded DEEP expiry limits are invalid.")
+    .Validate(options => !options.Enabled ||
+        (string.Equals(options.Provider, "GOOGLE_AD_MANAGER", StringComparison.Ordinal) &&
+         options.AdUnitPath.StartsWith("/", StringComparison.Ordinal) &&
+         options.AdUnitPath.Length <= 200),
+        "Rewarded DEEP requires a reviewed Google Ad Manager ad-unit path when enabled.")
+    .ValidateOnStart();
 builder.Services.AddOptions<BaseInterpretationCacheOptions>()
     .Bind(builder.Configuration.GetSection("BaseInterpretationCache"))
     .Validate(options => options.MaximumEntries > 0 && options.TtlMinutes > 0,
@@ -124,6 +193,24 @@ builder.Services.AddOptions<ClassifierTrainingOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<AdminOptions>()
     .Bind(builder.Configuration.GetSection("Admin"));
+builder.Services.AddOptions<AccountOptions>()
+    .Bind(builder.Configuration.GetSection("Account"))
+    .Validate(options => options.SessionHours is > 0 and <= 168 &&
+        options.VerificationTokenMinutes is > 0 and <= 1440 &&
+        options.PasswordResetTokenMinutes is > 0 and <= 1440 &&
+        options.MaxFailedAccessAttempts is > 0 and <= 20 &&
+        options.LockoutMinutes is > 0 and <= 1440,
+        "Account security limits are invalid.")
+    .ValidateOnStart();
+builder.Services.AddOptions<AccountEmailOptions>()
+    .Bind(builder.Configuration.GetSection("AccountEmail"))
+    .Validate(options => !options.Enabled ||
+        (!string.IsNullOrWhiteSpace(options.Host) && options.Port > 0 &&
+         System.Net.Mail.MailAddress.TryCreate(options.FromAddress, out _) &&
+         IsSecurePublicSiteUrl(options.PublicSiteUrl) &&
+         (string.IsNullOrWhiteSpace(options.Username) == string.IsNullOrWhiteSpace(options.Password))),
+        "Account email settings are required when delivery is enabled.")
+    .ValidateOnStart();
 
 builder.Services.AddCors(options =>
 {
@@ -137,7 +224,7 @@ builder.Services.AddCors(options =>
 
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyHeader().AllowAnyMethod();
+        policy.AllowAnyHeader().AllowAnyMethod().AllowCredentials();
 
         if (builder.Environment.IsDevelopment())
         {
@@ -192,6 +279,8 @@ if (string.IsNullOrWhiteSpace(postgresConnectionString))
 {
     builder.Services.AddSingleton<IGeneratedAnswerStore, NullGeneratedAnswerStore>();
     builder.Services.AddSingleton<IClassifierTrainingStore, UnavailableClassifierTrainingStore>();
+    builder.Services.AddSingleton<IAccountService, UnavailableAccountService>();
+    builder.Services.AddSingleton<IRewardedDeepService, UnavailableRewardedDeepService>();
 }
 else
 {
@@ -199,7 +288,15 @@ else
         options.UseNpgsql(postgresConnectionString));
     builder.Services.AddScoped<IGeneratedAnswerStore, PostgresGeneratedAnswerStore>();
     builder.Services.AddScoped<IClassifierTrainingStore, ClassifierTrainingStore>();
+    builder.Services.AddScoped<IAccountService, AccountService>();
+    builder.Services.AddScoped<IRewardedDeepService, RewardedDeepService>();
 }
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IPasswordHasher<UserAccountEntity>, PasswordHasher<UserAccountEntity>>();
+builder.Services.AddSingleton<IAccountNotificationSender, AccountNotificationSender>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authentication.IClaimsTransformation, DatabaseSessionClaimsTransformation>();
+builder.Services.AddScoped<ApiAntiforgeryFilter>();
+builder.Services.AddScoped<ApiAntiforgeryForCookieUserFilter>();
 builder.Services.AddSingleton<IAdminAccessPolicy, AdminAccessPolicy>();
 builder.Services.AddSingleton<ITarotCatalog, TarotCatalog>();
 builder.Services.AddSingleton<RuleInterpretationEngine>();
@@ -236,6 +333,35 @@ if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+if (args.Contains("--bootstrap-admin", StringComparer.OrdinalIgnoreCase))
+{
+    if (string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        throw new InvalidOperationException("PostgreSQL must be configured to bootstrap an administrator.");
+    }
+
+    var bootstrapOptions = app.Services.GetRequiredService<IOptions<AccountOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(bootstrapOptions.BootstrapAdminEmail) ||
+        string.IsNullOrWhiteSpace(bootstrapOptions.BootstrapAdminPassword) ||
+        PasswordRules.Validate(bootstrapOptions.BootstrapAdminPassword).Any())
+    {
+        throw new InvalidOperationException("Set a valid Account__BootstrapAdminEmail and Account__BootstrapAdminPassword for this one-time command.");
+    }
+
+    await using var bootstrapScope = app.Services.CreateAsyncScope();
+    var accounts = bootstrapScope.ServiceProvider.GetRequiredService<IAccountService>();
+    var result = await accounts.BootstrapAdminAsync(
+        bootstrapOptions.BootstrapAdminEmail,
+        bootstrapOptions.BootstrapAdminPassword,
+        CancellationToken.None);
+    if (!result.Succeeded)
+    {
+        throw new InvalidOperationException("Administrator bootstrap was refused because an administrator already exists or the account could not be created.");
+    }
+    app.Logger.LogInformation("The first administrator account was created successfully.");
+    return;
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -247,6 +373,9 @@ if (app.Environment.IsDevelopment())
 }
 app.UseExceptionHandler();
 app.UseCors();
+app.UseAuthentication();
+app.UseRateLimiter();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
@@ -306,5 +435,28 @@ static bool IsPrivateAddress(IPAddress address)
         || (octets[0] == 172 && octets[1] is >= 16 and <= 31)
         || (octets[0] == 192 && octets[1] == 168);
 }
+
+static RateLimitPartition<string> CreateRateLimitPartition(HttpContext context, int permitLimit, TimeSpan window) =>
+    RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = window,
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+
+static Task WriteAuthenticationErrorAsync(HttpResponse response, ResponseCode code, string message)
+{
+    response.StatusCode = (int)code;
+    response.ContentType = "application/json";
+    return response.WriteAsJsonAsync(new ResponseDto<object, string>(null, message, code));
+}
+
+static bool IsSecurePublicSiteUrl(string value) =>
+    Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+    (uri.Scheme == Uri.UriSchemeHttps ||
+     (uri.Scheme == Uri.UriSchemeHttp && (uri.IsLoopback || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase))));
 
 public partial class Program;

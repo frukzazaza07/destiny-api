@@ -19,9 +19,9 @@ public sealed class CacheAdminController(
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Analytics([FromQuery] int top = 20, CancellationToken cancellationToken = default)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         var runtime = metrics.Snapshot();
@@ -37,13 +37,14 @@ public sealed class CacheAdminController(
     }
 
     [HttpPost("warmups")]
+    [ApiAntiforgeryForCookieUser]
     [ProducesResponseType(typeof(ResponseDto<CacheWarmupJobDto, object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status401Unauthorized)]
     public IActionResult StartWarmup([FromBody] CacheWarmupRequestDto request)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         return SuccessResponse(warmup.Enqueue(request));
@@ -53,9 +54,9 @@ public sealed class CacheAdminController(
     [ProducesResponseType(typeof(ResponseDto<IReadOnlyList<CacheWarmupJobDto>, object>), StatusCodes.Status200OK)]
     public IActionResult ListWarmups()
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         return SuccessResponse(warmup.List());
@@ -66,9 +67,9 @@ public sealed class CacheAdminController(
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status404NotFound)]
     public IActionResult GetWarmup(Guid id)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         var job = warmup.Get(id);

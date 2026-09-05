@@ -35,6 +35,7 @@ export interface MonetizationRuntimeConfig {
   readonly trustCloudflareCountryHeader: boolean;
   readonly adsense: AdsenseRuntimeConfig;
   readonly analytics: AnalyticsRuntimeConfig;
+  readonly rewardedAdsEnabled: boolean;
 }
 
 type RuntimeEnvironment = Readonly<
@@ -47,7 +48,8 @@ type RuntimeEnvironment = Readonly<
       | "ADSENSE_GUIDE_SLOT_ID"
       | "ADSENSE_ENABLED"
       | "GA_MEASUREMENT_ID"
-      | "ANALYTICS_ENABLED",
+      | "ANALYTICS_ENABLED"
+      | "REWARDED_DEEP_ENABLED",
       string
     >
   >
@@ -100,5 +102,7 @@ export function getMonetizationRuntimeConfig(
         measurementId !== null,
       measurementId,
     },
+    rewardedAdsEnabled:
+      canSendGoogleRequests && parseExactTrue(environment.REWARDED_DEEP_ENABLED),
   };
 }

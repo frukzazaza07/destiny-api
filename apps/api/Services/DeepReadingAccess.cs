@@ -8,7 +8,13 @@ public interface IDeepReadingAccessPolicy
     DeepReadingAccess Evaluate(ClaimsPrincipal user);
 }
 
-public sealed record DeepReadingAccess(bool Enabled, bool Entitled, string? UpgradeUrl);
+public sealed record DeepReadingAccess(
+    bool Enabled,
+    bool Entitled,
+    string? UpgradeUrl,
+    bool Authenticated = false,
+    DateTimeOffset? PremiumExpiresAt = null,
+    int AvailableAdEarnedCredits = 0);
 
 public sealed class DeepReadingAccessPolicy(
     IOptions<DeepReadingOptions> options,
@@ -20,7 +26,7 @@ public sealed class DeepReadingAccessPolicy(
     {
         if (!_options.Enabled)
         {
-            return new DeepReadingAccess(false, false, _options.UpgradeUrl);
+            return new DeepReadingAccess(false, false, _options.UpgradeUrl, user.Identity?.IsAuthenticated == true);
         }
 
         var developmentAccess = environment.IsDevelopment() &&
@@ -28,6 +34,17 @@ public sealed class DeepReadingAccessPolicy(
         var claimAccess = user.Identity?.IsAuthenticated == true &&
             user.HasClaim(_options.ClaimType, _options.ClaimValue);
 
-        return new DeepReadingAccess(true, developmentAccess || claimAccess, _options.UpgradeUrl);
+        DateTimeOffset? premiumExpiresAt = DateTimeOffset.TryParse(
+            user.FindFirstValue("tarot:premium_expires_at"),
+            out var parsedExpiry)
+            ? parsedExpiry
+            : null;
+
+        return new DeepReadingAccess(
+            true,
+            developmentAccess || claimAccess,
+            _options.UpgradeUrl,
+            user.Identity?.IsAuthenticated == true,
+            premiumExpiresAt);
     }
 }

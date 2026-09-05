@@ -22,6 +22,40 @@ namespace TarotDestiny.Api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("TarotDestiny.Api.Data.AccountRoleEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_role");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_account_role_name");
+
+                    b.ToTable("account_role", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("0d80c432-36ca-4b4c-90a5-3a824e5c73c1"),
+                            Name = "USER"
+                        },
+                        new
+                        {
+                            Id = new Guid("854ced1e-2943-42fc-9818-01a47952c723"),
+                            Name = "ADMIN"
+                        });
+                });
+
             modelBuilder.Entity("TarotDestiny.Api.Data.ClassifierTrainingExampleEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -303,6 +337,542 @@ namespace TarotDestiny.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedAdAttemptEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("NonceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("nonce_hash");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rewarded_ad_attempt");
+
+                    b.HasIndex("NonceHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rewarded_ad_attempt_nonce");
+
+                    b.HasIndex("SessionId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_rewarded_ad_attempt_session_created");
+
+                    b.ToTable("rewarded_ad_attempt", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rewarded_ad_attempt_expiry", "expires_at > created_at");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepCreditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<DateTimeOffset?>("ReservationExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reservation_expires_at");
+
+                    b.Property<Guid?>("ReservationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reservation_id");
+
+                    b.Property<DateTimeOffset?>("ReservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reserved_at");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rewarded_deep_credit");
+
+                    b.HasIndex("ReservationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rewarded_deep_credit_reservation");
+
+                    b.HasIndex("SessionId", "ExpiresAt")
+                        .HasDatabaseName("ix_rewarded_deep_credit_session_expiry");
+
+                    b.HasIndex("UserId", "ExpiresAt")
+                        .HasDatabaseName("ix_rewarded_deep_credit_user_expiry");
+
+                    b.ToTable("rewarded_deep_credit", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rewarded_deep_credit_expiry", "expires_at > issued_at");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AnonymousTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("anonymous_token_hash");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DeepCreditsPerCompletedBundle")
+                        .HasColumnType("integer")
+                        .HasColumnName("deep_credits_per_completed_bundle");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("RequiredAdCompletions")
+                        .HasColumnType("integer")
+                        .HasColumnName("required_ad_completions");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("revision");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("ValidAdCompletions")
+                        .HasColumnType("integer")
+                        .HasColumnName("valid_ad_completions");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rewarded_deep_session");
+
+                    b.HasIndex("AnonymousTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rewarded_deep_session_anonymous_token");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_rewarded_deep_session_user_created");
+
+                    b.ToTable("rewarded_deep_session", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rewarded_deep_session_credits", "deep_credits_per_completed_bundle BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_session_expiry", "expires_at > created_at");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_session_identity", "user_id IS NOT NULL OR anonymous_token_hash IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_session_progress", "valid_ad_completions >= 0 AND valid_ad_completions <= required_ad_completions");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_session_required", "required_ad_completions BETWEEN 1 AND 10");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepSettingsEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<int>("DeepCreditsPerCompletedBundle")
+                        .HasColumnType("integer")
+                        .HasColumnName("deep_credits_per_completed_bundle");
+
+                    b.Property<int>("RequiredAdCompletions")
+                        .HasColumnType("integer")
+                        .HasColumnName("required_ad_completions");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("revision");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rewarded_deep_settings");
+
+                    b.ToTable("rewarded_deep_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rewarded_deep_settings_credits", "deep_credits_per_completed_bundle BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_settings_required", "required_ad_completions BETWEEN 1 AND 10");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_settings_revision", "revision >= 0");
+
+                            t.HasCheckConstraint("ck_rewarded_deep_settings_singleton", "id = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            DeepCreditsPerCompletedBundle = 1,
+                            RequiredAdCompletions = 3,
+                            Revision = 0,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 5, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AccessFailedCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("access_failed_count");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("disabled_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("EmailVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_verified_at");
+
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lockout_end");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("password_hash");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("revision");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("security_stamp");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_user");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("ux_account_user_normalized_email");
+
+                    b.ToTable("account_user", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_account_user_failed_count", "access_failed_count >= 0");
+
+                            t.HasCheckConstraint("ck_account_user_revision", "revision >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountRoleEntity", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.HasKey("UserId", "RoleId")
+                        .HasName("pk_account_user_role");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("account_user_role", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountTokenEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("purpose");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_token");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_account_token_hash");
+
+                    b.HasIndex("UserId", "Purpose")
+                        .HasDatabaseName("ix_account_token_user_purpose");
+
+                    b.ToTable("account_token", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_account_token_expiry", "expires_at > created_at");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserEntitlementAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EntitlementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entitlement_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_entitlement_audit");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_user_entitlement_audit_user_created");
+
+                    b.ToTable("user_entitlement_audit", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserEntitlementEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("GrantedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("granted_by_user_id");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("revision");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_entitlement");
+
+                    b.HasIndex("GrantedByUserId");
+
+                    b.HasIndex("UserId", "Type")
+                        .IsUnique()
+                        .HasDatabaseName("ux_user_entitlement_user_type");
+
+                    b.ToTable("user_entitlement", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_entitlement_expiry", "expires_at > starts_at");
+
+                            t.HasCheckConstraint("ck_user_entitlement_revision", "revision >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("security_stamp");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_session");
+
+                    b.HasIndex("UserId", "ExpiresAt")
+                        .HasDatabaseName("ix_account_session_user_expiry");
+
+                    b.ToTable("account_session", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_account_session_expiry", "expires_at > created_at");
+                        });
+                });
+
             modelBuilder.Entity("TarotDestiny.Api.Data.GeneratedAnswerVariantEntity", b =>
                 {
                     b.HasOne("TarotDestiny.Api.Data.GeneratedAnswerEntity", "GeneratedAnswer")
@@ -315,9 +885,129 @@ namespace TarotDestiny.Api.Data.Migrations
                     b.Navigation("GeneratedAnswer");
                 });
 
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedAdAttemptEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.RewardedDeepSessionEntity", "Session")
+                        .WithMany("Attempts")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepCreditEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.RewardedDeepSessionEntity", "Session")
+                        .WithMany("Credits")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Session");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepSessionEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountRoleEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.AccountRoleEntity", "Role")
+                        .WithMany("Users")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany("Roles")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountTokenEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserEntitlementEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "GrantedByUser")
+                        .WithMany()
+                        .HasForeignKey("GrantedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany("Entitlements")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GrantedByUser");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserSessionEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.UserAccountEntity", "User")
+                        .WithMany("Sessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.AccountRoleEntity", b =>
+                {
+                    b.Navigation("Users");
+                });
+
             modelBuilder.Entity("TarotDestiny.Api.Data.GeneratedAnswerEntity", b =>
                 {
                     b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.RewardedDeepSessionEntity", b =>
+                {
+                    b.Navigation("Attempts");
+
+                    b.Navigation("Credits");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.UserAccountEntity", b =>
+                {
+                    b.Navigation("Entitlements");
+
+                    b.Navigation("Roles");
+
+                    b.Navigation("Sessions");
                 });
 #pragma warning restore 612, 618
         }

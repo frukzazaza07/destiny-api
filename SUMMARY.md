@@ -21,6 +21,36 @@ Detailed implementation work belongs in `TASK.md`.
 
 ---
 
+# User Accounts and Premium DEEP Access (2026-09-05)
+
+The public application now has database-backed user accounts. Authentication uses a protected `HttpOnly`, `Secure`, `SameSite=Lax` cookie whose session identifier is revalidated against PostgreSQL on every authenticated request. Passwords use ASP.NET Core's adaptive password hasher; email-verification and password-reset values are short-lived, single-use, and stored only as hashes.
+
+Current authorization behavior:
+
+- Anonymous visitors and ordinary accounts retain unrestricted `STANDARD` readings.
+- `DEEP` is available only when the account is enabled, email-verified, and has an active, unrevoked `PREMIUM_DEEP` entitlement.
+- The backend derives the existing `tarot:deep_reading=true` claim from current database state. The browser cannot supply or persist that authority.
+- Password reset, email-verification privilege activation, account disablement, and premium grant/extension/revocation invalidate active sessions. Expiry is evaluated during request authentication.
+- Premium entitlements use optimistic concurrency and a separate audit history. They remain separate from the future rewarded-ad credit ledger.
+- Browser administration requires an authenticated `ADMIN` role. The legacy header key remains available only for non-browser operational compatibility and is no longer stored by the admin UI.
+
+The API exposes CSRF-protected register/login/logout/recovery/account-deletion routes plus role-protected user search, creation, status, premium management, and entitlement history. Public registration and SMTP delivery are disabled by default. The `UserAccountsAndPremiumAccess` migration seeds only role definitions—never a user or credential—and [ACCOUNT_SECURITY.md](ACCOUNT_SECURITY.md) documents one-time first-admin bootstrap and production operations.
+
+หน้าสาธารณะมีระบบบัญชีผู้ใช้ที่ตรวจสอบเซสชันและสิทธิ์พรีเมียมจากฐานข้อมูลทุกคำขอ ผู้ใช้ทั่วไปยังอ่านแบบ `STANDARD` ได้ตามเดิม ส่วน `DEEP` ใช้ได้เฉพาะบัญชีที่เปิดใช้งาน ยืนยันอีเมลแล้ว และมีสิทธิ์ `PREMIUM_DEEP` ที่ยังไม่หมดอายุหรือถูกเพิกถอน เบราว์เซอร์ไม่สามารถกำหนดสิทธิ์นี้เองได้
+
+Verification completed:
+
+```text
+dotnet test TarotDestiny.sln --no-restore  → 95 passed
+dotnet ef migrations has-pending-model-changes → no pending changes
+apps/web: npm run build                    → passed (Next.js 16.3.2)
+apps/web: npm run test:smoke               → 22 passed
+```
+
+Production rollout still requires SMTP/provider configuration, final legal and retention approval, a production-shaped PostgreSQL upgrade rehearsal, and the documented one-time administrator bootstrap. Direct in-app visual inspection was unavailable; the headless Chrome suite completed responsive and accessibility rendering checks.
+
+---
+
 # Frontend Reading Journey Update (2026-08-30)
 
 The main reading page now uses an explicit interaction phase instead of a shared `busy` boolean:

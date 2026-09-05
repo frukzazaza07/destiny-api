@@ -91,6 +91,12 @@ public sealed class ApiContractTests
         Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples/{id}/review", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/classifier/training-examples/export", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/auth/csrf", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/auth/login", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/auth/password-reset/confirm", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/admin/users", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/premium", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/entitlements", out _));
 
         using var swagger = await client.GetAsync("/swagger/index.html");
         Assert.AreEqual(HttpStatusCode.OK, swagger.StatusCode);

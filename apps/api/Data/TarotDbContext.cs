@@ -7,9 +7,23 @@ public sealed class TarotDbContext(DbContextOptions<TarotDbContext> options) : D
     public DbSet<GeneratedAnswerEntity> GeneratedAnswers => Set<GeneratedAnswerEntity>();
     public DbSet<GeneratedAnswerVariantEntity> GeneratedAnswerVariants => Set<GeneratedAnswerVariantEntity>();
     public DbSet<ClassifierTrainingExampleEntity> ClassifierTrainingExamples => Set<ClassifierTrainingExampleEntity>();
+    public DbSet<UserAccountEntity> Users => Set<UserAccountEntity>();
+    public DbSet<AccountRoleEntity> Roles => Set<AccountRoleEntity>();
+    public DbSet<UserAccountRoleEntity> UserRoles => Set<UserAccountRoleEntity>();
+    public DbSet<UserSessionEntity> UserSessions => Set<UserSessionEntity>();
+    public DbSet<UserAccountTokenEntity> AccountTokens => Set<UserAccountTokenEntity>();
+    public DbSet<UserEntitlementEntity> UserEntitlements => Set<UserEntitlementEntity>();
+    public DbSet<UserEntitlementAuditEntity> UserEntitlementAudits => Set<UserEntitlementAuditEntity>();
+    public DbSet<RewardedDeepSettingsEntity> RewardedDeepSettings => Set<RewardedDeepSettingsEntity>();
+    public DbSet<RewardedDeepSessionEntity> RewardedDeepSessions => Set<RewardedDeepSessionEntity>();
+    public DbSet<RewardedAdAttemptEntity> RewardedAdAttempts => Set<RewardedAdAttemptEntity>();
+    public DbSet<RewardedDeepCreditEntity> RewardedDeepCredits => Set<RewardedDeepCreditEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        AccountDataConfiguration.Configure(modelBuilder);
+        RewardedDeepDataConfiguration.Configure(modelBuilder);
+
         modelBuilder.Entity<GeneratedAnswerEntity>(entity =>
         {
             entity.ToTable("tarot_generated_answer", table =>

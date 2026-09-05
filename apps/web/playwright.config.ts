@@ -32,6 +32,7 @@ export default defineConfig({
       ADSENSE_ENABLED: "false",
       GA_MEASUREMENT_ID: "G-TEST000001",
       ANALYTICS_ENABLED: "false",
+      REWARDED_DEEP_ENABLED: "true",
       CF_IPCOUNTRY_TRUSTED: "true"
     }
   }

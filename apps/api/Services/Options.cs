@@ -129,8 +129,44 @@ public sealed class AdminOptions
 public sealed class DeepReadingOptions
 {
     public bool Enabled { get; set; } = true;
-    public bool AllowUnentitledInDevelopment { get; set; } = true;
+    public bool AllowUnentitledInDevelopment { get; set; }
     public string ClaimType { get; set; } = "tarot:deep_reading";
     public string ClaimValue { get; set; } = "true";
     public string? UpgradeUrl { get; set; }
+}
+
+public sealed class RewardedDeepOptions
+{
+    public bool Enabled { get; set; }
+    public string Provider { get; set; } = "GOOGLE_AD_MANAGER";
+    public string AdUnitPath { get; set; } = string.Empty;
+    public int SessionHours { get; set; } = 24;
+    public int AttemptMinutes { get; set; } = 10;
+    public int ReservationMinutes { get; set; } = 5;
+}
+
+public sealed class AccountOptions
+{
+    public bool Enabled { get; set; } = true;
+    public bool PublicRegistrationEnabled { get; set; }
+    public int SessionHours { get; set; } = 24;
+    public int VerificationTokenMinutes { get; set; } = 60;
+    public int PasswordResetTokenMinutes { get; set; } = 30;
+    public int MaxFailedAccessAttempts { get; set; } = 5;
+    public int LockoutMinutes { get; set; } = 15;
+    public string? BootstrapAdminEmail { get; set; }
+    public string? BootstrapAdminPassword { get; set; }
+    public string? DataProtectionKeysPath { get; set; }
+}
+
+public sealed class AccountEmailOptions
+{
+    public bool Enabled { get; set; }
+    public string Host { get; set; } = string.Empty;
+    public int Port { get; set; } = 587;
+    public bool UseSsl { get; set; } = true;
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string FromAddress { get; set; } = string.Empty;
+    public string PublicSiteUrl { get; set; } = string.Empty;
 }

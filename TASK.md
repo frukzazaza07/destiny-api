@@ -2594,41 +2594,43 @@ startup_warmup_cancelled
 
 # Next Task — User Login and Premium DEEP Access
 
+Status: **Implemented; production SMTP/legal approval and production-shaped migration QA remain rollout gates**
+
 ## Product Requirement
 
-- [ ] Add a secure user account and login system for the public web application.
-- [ ] Let an authorized administrator create users and grant, extend, revoke, or inspect premium DEEP access.
-- [ ] Allow a currently entitled premium user to select and generate DEEP readings without watching rewarded ads or consuming ad-earned credits.
-- [ ] Show clear Thai and English account, login, logout, premium status, expiry, and access-denied states without exposing internal authorization details.
-- [ ] Keep STANDARD readings available without a premium account and preserve the existing anonymous experience.
+- [x] Add a secure user account and login system for the public web application.
+- [x] Let an authorized administrator create users and grant, extend, revoke, or inspect premium DEEP access.
+- [x] Allow a currently entitled premium user to select and generate DEEP readings without watching rewarded ads or consuming ad-earned credits.
+- [x] Show clear Thai and English account, login, logout, premium status, expiry, and access-denied states without exposing internal authorization details.
+- [x] Keep STANDARD readings available without a premium account and preserve the existing anonymous experience.
 
 ## Authentication and Session Security
 
-- [ ] Use ASP.NET Core Identity or an equivalently reviewed database-backed authentication system with unique normalized email addresses and strong adaptive password hashing. Never store or log plaintext passwords.
-- [ ] Use server-managed `HttpOnly`, `Secure`, appropriately scoped `SameSite` session cookies for the same-origin web/API deployment. Do not store bearer tokens or entitlement claims in `localStorage`.
-- [ ] Add register, login, logout, current-user, email-verification, and password-reset flows. Keep public registration disabled by default until outbound email and abuse controls are configured; administrators must still be able to create users safely.
-- [ ] Add CSRF protection to state-changing cookie-authenticated endpoints, rotate the session on login and privilege changes, and invalidate active sessions after password reset, account disablement, or premium revocation.
-- [ ] Rate-limit login, registration, verification, and password-reset attempts; add lockout/backoff and enumeration-resistant responses.
-- [ ] Require authenticated role-based authorization for `/admin` and premium-management APIs. Do not expose the existing server admin key to browser JavaScript or use it as a user session.
-- [ ] Provide a documented one-time first-admin bootstrap procedure without shipping a default username or password.
+- [x] Use ASP.NET Core Identity or an equivalently reviewed database-backed authentication system with unique normalized email addresses and strong adaptive password hashing. Never store or log plaintext passwords.
+- [x] Use server-managed `HttpOnly`, `Secure`, appropriately scoped `SameSite` session cookies for the same-origin web/API deployment. Do not store bearer tokens or entitlement claims in `localStorage`.
+- [x] Add register, login, logout, current-user, email-verification, and password-reset flows. Keep public registration disabled by default until outbound email and abuse controls are configured; administrators must still be able to create users safely.
+- [x] Add CSRF protection to state-changing cookie-authenticated endpoints, rotate the session on login and privilege changes, and invalidate active sessions after password reset, account disablement, or premium revocation.
+- [x] Rate-limit login, registration, verification, and password-reset attempts; add lockout/backoff and enumeration-resistant responses.
+- [x] Require authenticated role-based authorization for `/admin` and premium-management APIs. Do not expose the existing server admin key to browser JavaScript or use it as a user session.
+- [x] Provide a documented one-time first-admin bootstrap procedure without shipping a default username or password.
 
 ## Premium Entitlement Storage and Rules
 
-- [ ] Add migrations for users, roles, sessions/tokens, and an auditable user-entitlement record containing entitlement type, start time, expiry time, revocation time, granting administrator, and timestamps. Do not model premium as an unaudited client-controlled boolean.
-- [ ] Derive the existing `tarot:deep_reading=true` authorization server-side only while the premium entitlement is active and the account is enabled.
-- [ ] Make expiry and revocation effective promptly; do not rely on a stale long-lived browser claim.
+- [x] Add migrations for users, roles, sessions/tokens, and an auditable user-entitlement record containing entitlement type, start time, expiry time, revocation time, granting administrator, and timestamps. Do not model premium as an unaudited client-controlled boolean.
+- [x] Derive the existing `tarot:deep_reading=true` authorization server-side only while the premium entitlement is active and the account is enabled.
+- [x] Make expiry and revocation effective promptly; do not rely on a stale long-lived browser claim.
 - [ ] Check premium entitlement before ad-earned credits. Premium users must not consume rewarded-ad progress or credits when requesting DEEP.
-- [ ] Keep premium entitlement and rewarded DEEP credits separate so granting or revoking premium never corrupts reward history.
-- [ ] Store only identity and entitlement data required for account operation, document retention/deletion behavior, and never attach reading questions or generated answers to advertising records.
+- [x] Keep premium entitlement and rewarded DEEP credits separate so granting or revoking premium never corrupts reward history.
+- [x] Store only identity and entitlement data required for account operation, document retention/deletion behavior, and never attach reading questions or generated answers to advertising records.
 
 ## API, Web, and Admin Work
 
-- [ ] Add authentication and account endpoints with consistent success/error envelopes, validation, rate-limit responses, and generated OpenAPI schemas.
-- [ ] Add admin-only user search, account status, premium grant/extend/revoke, and entitlement history endpoints with pagination and audit records.
-- [ ] Add accessible login/account pages and an admin premium-management interface; include loading, success, validation, expired-session, and forbidden states.
-- [ ] Update the reading-options response to expose only the current user's effective DEEP availability and premium expiry, never another user's entitlement details.
-- [ ] Update Privacy Policy, Terms, and account deletion documentation for user identity, authentication records, premium status, and retention.
-- [ ] Keep Swagger UI enabled in Development and disabled in Production unless explicitly secured, while keeping the generated OpenAPI document aligned with every new endpoint.
+- [x] Add authentication and account endpoints with consistent success/error envelopes, validation, rate-limit responses, and generated OpenAPI schemas.
+- [x] Add admin-only user search, account status, premium grant/extend/revoke, and entitlement history endpoints with pagination and audit records.
+- [x] Add accessible login/account pages and an admin premium-management interface; include loading, success, validation, expired-session, and forbidden states.
+- [x] Update the reading-options response to expose only the current user's effective DEEP availability and premium expiry, never another user's entitlement details.
+- [x] Update Privacy Policy, Terms, and account deletion documentation for user identity, authentication records, premium status, and retention.
+- [x] Keep Swagger UI enabled in Development and disabled in Production unless explicitly secured, while keeping the generated OpenAPI document aligned with every new endpoint.
 
 ## Test and Acceptance Criteria
 

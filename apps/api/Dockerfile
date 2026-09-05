@@ -22,6 +22,9 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app/publish .
 
+RUN mkdir -p /var/lib/tarot-dataprotection \
+    && chown app:app /var/lib/tarot-dataprotection
+
 ENV ASPNETCORE_HTTP_PORTS=5000 \
     DOTNET_EnableDiagnostics=0
 

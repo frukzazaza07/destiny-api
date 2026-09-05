@@ -67,7 +67,7 @@ export default async function LocalizedRootLayout({
             (runtime.adsense.enabled || runtime.analytics.enabled)
           }
           services={{
-            advertising: runtime.adsense.enabled,
+            advertising: runtime.adsense.enabled || runtime.rewardedAdsEnabled,
             analytics: runtime.analytics.enabled
           }}
         >

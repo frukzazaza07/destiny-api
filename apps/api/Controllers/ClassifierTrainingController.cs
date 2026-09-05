@@ -28,15 +28,16 @@ public sealed class ClassifierTrainingController(
         [FromQuery] int pageSize = 25,
         CancellationToken cancellationToken = default)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         return SuccessResponse(await store.ListAsync(status, page, pageSize, cancellationToken));
     }
 
     [HttpPut("training-examples/{id:guid}/review")]
+    [ApiAntiforgeryForCookieUser]
     [ProducesResponseType(typeof(ResponseDto<ClassifierTrainingExampleDto, object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status404NotFound)]
@@ -45,9 +46,9 @@ public sealed class ClassifierTrainingController(
         [FromBody] ClassifierReviewDto review,
         CancellationToken cancellationToken)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         var result = await store.ReviewAsync(id, review, cancellationToken);
@@ -61,9 +62,9 @@ public sealed class ClassifierTrainingController(
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status401Unauthorized)]
     public IActionResult Taxonomy()
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         var domains = Enum.GetValues<TarotDomain>()
@@ -82,9 +83,9 @@ public sealed class ClassifierTrainingController(
     [ProducesResponseType(typeof(ResponseDto<object, string>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Export(CancellationToken cancellationToken)
     {
-        if (!adminAccess.IsAllowed(Request))
+        if (!adminAccess.IsAllowed(HttpContext))
         {
-            return ErrorResponse("A valid X-Admin-Key header is required.", ResponseCode.UNAUTHORIZED);
+            return ErrorResponse("Administrator authentication is required.", ResponseCode.UNAUTHORIZED);
         }
 
         return SuccessResponse(await store.ExportApprovedAsync(cancellationToken));
