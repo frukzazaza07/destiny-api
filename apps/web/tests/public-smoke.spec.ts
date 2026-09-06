@@ -182,22 +182,22 @@ test("admin is noindex and never contains public or Google integrations", async 
   expect(requests).toEqual([]);
 });
 
-test("regional consent settings fail closed with services disabled", async ({ browser }) => {
+test("regional consent settings reflect rewarded advertising and fail closed outside reviewed regions", async ({ browser }) => {
   for (const country of ["TH", "US", "DE"]) {
     const context = await browser.newContext({
       extraHTTPHeaders: { "CF-IPCountry": country }
     });
     const page = await context.newPage();
     await page.goto("/en/privacy");
-    await page.locator("[data-consent-settings]").click();
     const dialog = page.getByRole("dialog");
+    if (country !== "TH") await page.locator("[data-consent-settings]").click();
     await expect(dialog).toBeVisible();
     if (country === "TH") {
-      await expect(dialog).toContainText("not enabled");
+      await expect(dialog).toContainText("optional Google Ad Manager rewarded ads");
     } else if (country === "US") {
       await expect(dialog).toContainText("unavailable for this region");
     } else {
-      await expect(dialog).toContainText("currently disabled");
+      await expect(dialog).toContainText("published guide pages");
     }
     await context.close();
   }

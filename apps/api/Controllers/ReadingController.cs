@@ -87,7 +87,12 @@ public sealed class ReadingController : MasterController
         catch
         {
             if (rewardReservation is not null)
-                await _rewards.ReleaseCreditAsync(rewardReservation, CancellationToken.None);
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    await _rewards.FinalizeCreditAsync(rewardReservation, CancellationToken.None);
+                else
+                    await _rewards.ReleaseCreditAsync(rewardReservation, CancellationToken.None);
+            }
             throw;
         }
     }

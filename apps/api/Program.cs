@@ -100,7 +100,7 @@ builder.Services.AddRateLimiter(options =>
             context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
         }
         await context.HttpContext.Response.WriteAsJsonAsync(
-            new ResponseDto<object, string>(null, "Too many account requests. Try again later.", ResponseCode.TOO_MANY_REQUESTS),
+            new ResponseDto<object, string>(null, "Too many requests. Try again later.", ResponseCode.TOO_MANY_REQUESTS),
             cancellationToken);
     };
     options.AddPolicy("login", context => CreateRateLimitPartition(context, 10, TimeSpan.FromMinutes(1)));

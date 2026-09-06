@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Data;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -57,7 +56,7 @@ public sealed class RewardedDeepService(
     TimeProvider timeProvider) : IRewardedDeepService
 {
     private const string ProtectorPurpose = "TarotDestiny.RewardedDeep.Attempt.v1";
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> IdentityLocks = new(StringComparer.Ordinal);
+    private static readonly SemaphoreSlim MutationGate = new(1, 1);
     private readonly RewardedDeepOptions _options = options.Value;
     private readonly IDataProtector _protector = dataProtection.CreateProtector(ProtectorPurpose);
 
@@ -86,9 +85,7 @@ public sealed class RewardedDeepService(
         if (!IsEnabled(settings)) return new(settings is null ? RewardedDeepResultCode.Unavailable : RewardedDeepResultCode.Disabled);
 
         var identity = RewardIdentity.From(user, anonymousToken);
-        var key = identity.LockKey;
-        var gate = IdentityLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
+        await MutationGate.WaitAsync(cancellationToken);
         try
         {
             var current = await FindCurrentSessionAsync(identity, now, cancellationToken);
@@ -126,13 +123,12 @@ public sealed class RewardedDeepService(
             };
             database.RewardedDeepSessions.Add(session);
             await database.SaveChangesAsync(cancellationToken);
-            var createdIdentity = new RewardIdentity(userId, anonymousHash);
             return RewardedDeepResult<RewardedDeepSessionResult>.Ok(
                 new RewardedDeepSessionResult(ToStatus(settings, session, 0, null), rawAnonymousToken));
         }
         finally
         {
-            gate.Release();
+            MutationGate.Release();
         }
     }
 
@@ -210,8 +206,7 @@ public sealed class RewardedDeepService(
         if (protectedExpiry <= now) return new(RewardedDeepResultCode.ExpiredNonce);
 
         var identity = RewardIdentity.From(user, anonymousToken);
-        var gate = IdentityLocks.GetOrAdd(identity.LockKey, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
+        await MutationGate.WaitAsync(cancellationToken);
         try
         {
             await using var transaction = await BeginSerializableIfRelationalAsync(cancellationToken);
@@ -230,6 +225,7 @@ public sealed class RewardedDeepService(
             if (attempt.Session.ValidAdCompletions == attempt.Session.RequiredAdCompletions)
             {
                 attempt.Session.CompletedAt = now;
+                attempt.Session.ValidAdCompletions = 0;
                 for (var index = 0; index < attempt.Session.DeepCreditsPerCompletedBundle; index++)
                 {
                     database.RewardedDeepCredits.Add(new RewardedDeepCreditEntity
@@ -260,7 +256,7 @@ public sealed class RewardedDeepService(
         }
         finally
         {
-            gate.Release();
+            MutationGate.Release();
         }
     }
 
@@ -324,8 +320,7 @@ public sealed class RewardedDeepService(
                 continue;
             }
 
-            var gate = IdentityLocks.GetOrAdd(identity.LockKey, _ => new SemaphoreSlim(1, 1));
-            await gate.WaitAsync(cancellationToken);
+            await MutationGate.WaitAsync(cancellationToken);
             try
             {
                 var credit = await database.RewardedDeepCredits.SingleOrDefaultAsync(item => item.Id == creditId, cancellationToken);
@@ -338,7 +333,7 @@ public sealed class RewardedDeepService(
                 await database.SaveChangesAsync(cancellationToken);
                 return new DeepCreditReservation(creditId, reservationId);
             }
-            finally { gate.Release(); }
+            finally { MutationGate.Release(); }
         }
         return null;
     }
@@ -458,17 +453,17 @@ public sealed class RewardedDeepService(
         catch (CryptographicException) { return false; }
     }
 
-    private Task<IDbContextTransaction?> BeginSerializableIfRelationalAsync(CancellationToken cancellationToken) =>
-        database.Database.IsRelational()
-            ? database.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ContinueWith<IDbContextTransaction?>(task => task.Result, cancellationToken)
-            : Task.FromResult<IDbContextTransaction?>(null);
+    private async Task<IDbContextTransaction?> BeginSerializableIfRelationalAsync(CancellationToken cancellationToken)
+    {
+        if (!database.Database.IsRelational()) return null;
+        return await database.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+    }
 
     private static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private sealed record RewardIdentity(Guid? UserId, string? AnonymousTokenHash)
     {
         public bool HasIdentity => UserId is not null || AnonymousTokenHash is not null;
-        public string LockKey => UserId is { } userId ? $"u:{userId:N}" : $"a:{AnonymousTokenHash ?? "new"}";
         public bool Matches(RewardedDeepSessionEntity session) => UserId is { } userId
             ? session.UserId == userId
             : AnonymousTokenHash is not null && session.AnonymousTokenHash == AnonymousTokenHash;

@@ -82,8 +82,10 @@ test("authenticated admin sees account and premium controls", async ({ page }) =
   await page.route("**/api/classifier/training-examples?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [] }, error: null, code: "SUCCESS" }) }));
   await page.route("**/api/admin/cache/warmups", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: [], error: null, code: "SUCCESS" }) }));
   await page.route("**/api/admin/users?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [{ id: "37e96b38-4353-40c0-a885-eeb1974307c1", email: "reader@example.test", emailVerified: true, enabled: true, roles: ["USER"], premiumDeepActive: false, premiumExpiresAt: null, premiumRevision: null, revision: 0 }] }, error: null, code: "SUCCESS" }) }));
+  await page.route("**/api/admin/rewarded-deep/settings", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { requiredAdCompletions: 3, deepCreditsPerCompletedBundle: 1, revision: 0, updatedAt: "2026-09-05T00:00:00Z", updatedByUserId: null }, error: null, code: "SUCCESS" }) }));
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Users & Premium DEEP" })).toBeVisible();
   await expect(page.getByText("reader@example.test")).toBeVisible();
   await expect(page.getByRole("button", { name: "Grant" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rewarded DEEP settings" })).toBeVisible();
 });

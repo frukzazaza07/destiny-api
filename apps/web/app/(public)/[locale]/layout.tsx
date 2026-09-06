@@ -64,7 +64,7 @@ export default async function LocalizedRootLayout({
           region={privacy.region}
           googleCmpConfigured={
             runtime.adsense.publisherId !== null &&
-            (runtime.adsense.enabled || runtime.analytics.enabled)
+            (runtime.adsense.enabled || runtime.analytics.enabled || runtime.rewardedAdsEnabled)
           }
           services={{
             advertising: runtime.adsense.enabled || runtime.rewardedAdsEnabled,

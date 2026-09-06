@@ -2523,74 +2523,76 @@ startup_warmup_cancelled
 
 # Next Task — Rewarded Ads for One DEEP Reading
 
+Status: **Implemented behind disabled-by-default rollout flags; live rollout remains blocked on provider eligibility and explicit policy/fraud/legal/cost approval**
+
 ## Product Requirement
 
-- [ ] Let a user voluntarily complete rewarded ads to earn single-use DEEP reading credits. Seed the database with a default requirement of **three completed rewarded ads** and a default reward of **one DEEP credit**.
-- [ ] Load both the required rewarded-ad completion count and the number of DEEP credits granted from server-authoritative database settings. Do not trust browser values or use client-supplied overrides.
-- [ ] Do **not** reward, request, encourage, or count ad clicks. Google forbids compensating users for clicks and other artificial interaction with regular ads. Only a provider-confirmed rewarded-ad completion may count. See [AdSense program policies](https://support.google.com/adsense/answer/48182?hl=en) and [ad placement policies](https://support.google.com/adsense/answer/1346295?hl=en).
-- [ ] Describe the current configured action accurately in Thai and English, for example with the defaults: “Watch 3 optional rewarded ads to unlock one DEEP reading.” Never use “click three ads” or “watch to support us.”
-- [ ] Make every rewarded ad a separate, explicit opt-in action. The user can close or decline it, and the normal free STANDARD reading remains usable without penalty.
-- [ ] Keep the reward non-transferable, usable only inside this service, and without cash value, in line with [Google rewarded inventory policy](https://support.google.com/adsense/answer/9121589?hl=en-EN).
-- [ ] If an ad is unavailable, has no fill, errors, or cannot load because consent was not granted, show a clear message. Do not substitute a normal display ad and do not ask the user to click an ad.
+- [x] Let a user voluntarily complete rewarded ads to earn single-use DEEP reading credits. Seed the database with a default requirement of **three completed rewarded ads** and a default reward of **one DEEP credit**.
+- [x] Load both the required rewarded-ad completion count and the number of DEEP credits granted from server-authoritative database settings. Do not trust browser values or use client-supplied overrides.
+- [x] Do **not** reward, request, encourage, or count ad clicks. Google forbids compensating users for clicks and other artificial interaction with regular ads. Only a provider-confirmed rewarded-ad completion may count. See [AdSense program policies](https://support.google.com/adsense/answer/48182?hl=en) and [ad placement policies](https://support.google.com/adsense/answer/1346295?hl=en).
+- [x] Describe the current configured action accurately in Thai and English, for example with the defaults: “Watch 3 optional rewarded ads to unlock one DEEP reading.” Never use “click three ads” or “watch to support us.”
+- [x] Make every rewarded ad a separate, explicit opt-in action. The user can close or decline it, and the normal free STANDARD reading remains usable without penalty.
+- [x] Keep the reward non-transferable, usable only inside this service, and without cash value, in line with [Google rewarded inventory policy](https://support.google.com/adsense/answer/9121589?hl=en-EN).
+- [x] If an ad is unavailable, has no fill, errors, or cannot load because consent was not granted, show a clear message. Do not substitute a normal display ad and do not ask the user to click an ad.
 
 ## Reward and Entitlement Rules
 
-- [ ] Count only the database-configured number of distinct provider success events equivalent to Google Publisher Tag's `rewardedSlotGranted`. Opening, viewing part of, clicking, closing, or receiving a `rewardedSlotClosed` event does not count.
-- [ ] Request and display rewarded ads sequentially; never keep more than one rewarded request active.
-- [ ] Store progress authoritatively on the server. Browser state may display progress but must not grant DEEP access.
-- [ ] For authenticated users, associate progress and credits with the user account. If anonymous rewards are supported, use a backend-issued opaque reward session; do not treat `localStorage`, cookies, or a client boolean as proof.
-- [ ] After the configured number of valid completions, atomically convert the progress into the configured number of single-use DEEP credits and reset the completion count.
-- [ ] Atomically consume the credit when the API authorizes the DEEP request so concurrent requests cannot reuse it.
-- [ ] Existing paid/premium DEEP entitlement takes priority and must not consume an ad-earned credit.
-- [ ] Progress and unused ad-earned credits expire after 24 hours. Limit issuance to one completed reward bundle per user or reward session per rolling 24 hours unless a later cost and abuse review approves another limit.
-- [ ] Reissue a consumed credit only when the server fails before returning a valid reading. User cancellation and client/network abandonment after a valid response do not automatically create another credit.
+- [x] Count only the database-configured number of distinct provider success events equivalent to Google Publisher Tag's `rewardedSlotGranted`. Opening, viewing part of, clicking, closing, or receiving a `rewardedSlotClosed` event does not count.
+- [x] Request and display rewarded ads sequentially; never keep more than one rewarded request active.
+- [x] Store progress authoritatively on the server. Browser state may display progress but must not grant DEEP access.
+- [x] For authenticated users, associate progress and credits with the user account. If anonymous rewards are supported, use a backend-issued opaque reward session; do not treat `localStorage`, cookies, or a client boolean as proof.
+- [x] After the configured number of valid completions, atomically convert the progress into the configured number of single-use DEEP credits and reset the completion count.
+- [x] Atomically consume the credit when the API authorizes the DEEP request so concurrent requests cannot reuse it.
+- [x] Existing paid/premium DEEP entitlement takes priority and must not consume an ad-earned credit.
+- [x] Progress and unused ad-earned credits expire after 24 hours. Limit issuance to one completed reward bundle per user or reward session per rolling 24 hours unless a later cost and abuse review approves another limit.
+- [x] Reissue a consumed credit only when the server fails before returning a valid reading. User cancellation and client/network abandonment after a valid response do not automatically create another credit.
 
 ## Database Configuration
 
-- [ ] Add a migrated and seeded singleton rewarded-DEEP settings record with `RequiredAdCompletions=3` and `DeepCreditsPerCompletedBundle=1`.
-- [ ] Require both settings to be positive, enforce reviewed upper bounds, and fail closed when the record is missing or invalid; do not silently enable unlimited ads or credits.
-- [ ] Add authenticated admin API and `/admin` controls to read and update both settings, including optimistic concurrency and an audit timestamp. Never expose unrelated configuration or secrets.
-- [ ] Snapshot the effective settings onto each newly created reward session. A later admin change applies only to new sessions, so progress and the promised reward cannot change while a user is completing a bundle.
+- [x] Add a migrated and seeded singleton rewarded-DEEP settings record with `RequiredAdCompletions=3` and `DeepCreditsPerCompletedBundle=1`.
+- [x] Require both settings to be positive, enforce reviewed upper bounds, and fail closed when the record is missing or invalid; do not silently enable unlimited ads or credits.
+- [x] Add authenticated admin API and `/admin` controls to read and update both settings, including optimistic concurrency and an audit timestamp. Never expose unrelated configuration or secrets.
+- [x] Snapshot the effective settings onto each newly created reward session. A later admin change applies only to new sessions, so progress and the promised reward cannot change while a user is completing a bundle.
 
 ## Provider Feasibility Gate
 
-- [ ] Keep guide-page display ads on AdSense, but evaluate **Google Ad Manager rewarded web inventory** for this feature because its web API exposes rewarded lifecycle events. See [rewarded ads for web](https://support.google.com/admanager/answer/9116812?hl=en) and the [GPT rewarded-ad sample](https://developers.google.com/publisher-tag/samples/display-rewarded-ad).
-- [ ] Do not assume AdSense Offerwall can implement the custom three-completion counter. Its documented rewarded-ad choice grants access after a completed ad and is managed by Google; use it only if a one-completion content-access model is accepted. See [AdSense Offerwall rewarded ad](https://support.google.com/adsense/answer/12726063?hl=en).
+- [x] Keep guide-page display ads on AdSense, but evaluate **Google Ad Manager rewarded web inventory** for this feature because its web API exposes rewarded lifecycle events. See [rewarded ads for web](https://support.google.com/admanager/answer/9116812?hl=en) and the [GPT rewarded-ad sample](https://developers.google.com/publisher-tag/samples/display-rewarded-ad).
+- [x] Do not assume AdSense Offerwall can implement the custom three-completion counter. Its documented rewarded-ad choice grants access after a completed ad and is managed by Google; use it only if a one-completion content-access model is accepted. See [AdSense Offerwall rewarded ad](https://support.google.com/adsense/answer/12726063?hl=en).
 - [ ] Complete a provider/account eligibility spike before implementation. Confirm that rewarded web inventory is available for this publisher, Thailand traffic, the production domain, and the intended mobile/desktop placements.
 - [ ] Record and accept the fraud model before launch: Google Ad Manager does not currently support server-side verification for rewarded ads on the web, so a browser grant event can be forged. Authentication, signed short-lived sessions, idempotency, rate limits, replay protection, and the daily cap reduce risk but do not make the signal cryptographically authoritative.
 - [ ] If that residual fraud risk is unacceptable, do not ship the three-ad feature. Use the provider-managed one-ad Offerwall flow or retain paid-only DEEP access instead.
-- [ ] Keep the rewarded-access feature disabled by default in Development, test, unknown regions, and Production until policy, consent, abuse, and cost reviews pass.
+- [x] Keep the rewarded-access feature disabled by default in Development, test, unknown regions, and Production until policy, consent, abuse, and cost reviews pass.
 
 ## Consent, Privacy, and Placement
 
-- [ ] Load no rewarded-ad script before the visitor has given the advertising consent required by the regional consent policy in the AdSense rollout plan.
-- [ ] Never send reading questions, generated answers, selected cards/topics, user IDs, authentication tokens, or DEEP entitlement data to the advertising provider.
-- [ ] Put rewarded controls on a dedicated unlock surface, clearly labelled as advertising and separated from navigation, reading controls, and card interactions to prevent accidental clicks.
-- [ ] Keep `/admin`, `/th`, `/en`, reading results, and legal pages free of regular display ads. A rewarded ad may appear only after an explicit unlock action; it must never launch automatically.
-- [ ] Update Privacy, Terms, Cookie Policy, and consent copy to explain the rewarded provider, purpose, data use, expiry, withdrawal effects, reward limits, and lack of cash value before enabling the feature.
+- [x] Load no rewarded-ad script before the visitor has given the advertising consent required by the regional consent policy in the AdSense rollout plan.
+- [x] Never send reading questions, generated answers, selected cards/topics, user IDs, authentication tokens, or DEEP entitlement data to the advertising provider.
+- [x] Put rewarded controls on a dedicated unlock surface, clearly labelled as advertising and separated from navigation, reading controls, and card interactions to prevent accidental clicks.
+- [x] Keep `/admin`, `/th`, `/en`, reading results, and legal pages free of regular display ads. A rewarded ad may appear only after an explicit unlock action; it must never launch automatically.
+- [x] Update Privacy, Terms, Cookie Policy, and consent copy to explain the rewarded provider, purpose, data use, expiry, withdrawal effects, reward limits, and lack of cash value before enabling the feature.
 
 ## Proposed API and Storage Work
 
-- [ ] Add an authenticated or opaque-session reward status endpoint that returns the valid completion count, required completion count, DEEP credits granted per completed bundle, expiry, available DEEP credits, and next eligible time.
-- [ ] Add a reward-session endpoint that issues a signed, short-lived, single-purpose nonce for one rewarded-ad attempt.
-- [ ] Add an idempotent grant endpoint that accepts one nonce once, records the provider grant event, applies rate limits, and returns updated progress. It must reject expired, replayed, mismatched, or already-used nonces.
-- [ ] Extend DEEP authorization to consume either the existing premium entitlement or one valid ad-earned credit without trusting client-supplied entitlement flags.
-- [ ] Persist only the minimum reward ledger needed for correctness and abuse controls; never persist ad click data or reading content in it.
-- [ ] Document all new endpoints, authentication, request/response schemas, error envelopes, and rate-limit responses in generated OpenAPI and Swagger UI, following the repository API-documentation requirements.
+- [x] Add an authenticated or opaque-session reward status endpoint that returns the valid completion count, required completion count, DEEP credits granted per completed bundle, expiry, available DEEP credits, and next eligible time.
+- [x] Add a reward-session endpoint that issues a signed, short-lived, single-purpose nonce for one rewarded-ad attempt.
+- [x] Add an idempotent grant endpoint that accepts one nonce once, records the provider grant event, applies rate limits, and returns updated progress. It must reject expired, replayed, mismatched, or already-used nonces.
+- [x] Extend DEEP authorization to consume either the existing premium entitlement or one valid ad-earned credit without trusting client-supplied entitlement flags.
+- [x] Persist only the minimum reward ledger needed for correctness and abuse controls; never persist ad click data or reading content in it.
+- [x] Document all new endpoints, authentication, request/response schemas, error envelopes, and rate-limit responses in generated OpenAPI and Swagger UI, following the repository API-documentation requirements.
 
 ## Verification and Acceptance Criteria
 
-- [ ] With seeded defaults, zero, one, or two valid rewarded grants cannot authorize DEEP; exactly three distinct valid grants issue one credit.
-- [ ] With valid non-default database settings, the configured completion threshold issues exactly the configured number of credits, and changing settings does not alter an in-progress session's snapshotted threshold or promised reward.
-- [ ] Ad clicks, partial views, ad-ready events, closes, skips, errors, and no-fill responses never increment progress.
-- [ ] Replaying a grant, refreshing the page, changing browser state, or sending concurrent requests cannot duplicate progress or credits.
-- [ ] Each credit authorizes exactly one DEEP reading and is consumed at most once under concurrency.
-- [ ] Paid premium users keep DEEP access without watching ads or consuming an ad-earned credit.
-- [ ] Declining advertising consent prevents ad requests and leaves STANDARD readings functional.
-- [ ] With the feature flag off, current DEEP authorization and all public/admin routes behave exactly as before.
-- [ ] Browser tests cover dynamic Thai and English threshold/reward wording, keyboard access, opt-in/close behavior, progress recovery, consent withdrawal, no-fill, provider errors, and one active rewarded slot.
-- [ ] API tests cover seeded database defaults, validated admin updates, settings snapshots, authentication, expiry, daily caps, nonce signing, idempotency, replay protection, rate limiting, atomic multi-credit grant/consume behavior, and failure recovery.
-- [ ] Production rollout remains blocked until provider eligibility is confirmed, legal/policy copy is reviewed, consent tests pass, and live-ad testing avoids all manual clicks.
+- [x] With seeded defaults, zero, one, or two valid rewarded grants cannot authorize DEEP; exactly three distinct valid grants issue one credit.
+- [x] With valid non-default database settings, the configured completion threshold issues exactly the configured number of credits, and changing settings does not alter an in-progress session's snapshotted threshold or promised reward.
+- [x] Ad clicks, partial views, ad-ready events, closes, skips, errors, and no-fill responses never increment progress.
+- [x] Replaying a grant, refreshing the page, changing browser state, or sending concurrent requests cannot duplicate progress or credits.
+- [x] Each credit authorizes exactly one DEEP reading and is consumed at most once under concurrency.
+- [x] Paid premium users keep DEEP access without watching ads or consuming an ad-earned credit.
+- [x] Declining advertising consent prevents ad requests and leaves STANDARD readings functional.
+- [x] With the feature flag off, current DEEP authorization and all public/admin routes behave exactly as before.
+- [x] Browser tests cover dynamic Thai and English threshold/reward wording, keyboard access, opt-in/close behavior, progress recovery, consent withdrawal, no-fill, provider errors, and one active rewarded slot.
+- [x] API tests cover seeded database defaults, validated admin updates, settings snapshots, authentication, expiry, daily caps, nonce signing, idempotency, replay protection, rate limiting, atomic multi-credit grant/consume behavior, and failure recovery.
+- [x] Production rollout remains blocked until provider eligibility is confirmed, legal/policy copy is reviewed, consent tests pass, and live-ad testing avoids all manual clicks.
 
 # Next Task — User Login and Premium DEEP Access
 
@@ -2619,7 +2621,7 @@ Status: **Implemented; production SMTP/legal approval and production-shaped migr
 - [x] Add migrations for users, roles, sessions/tokens, and an auditable user-entitlement record containing entitlement type, start time, expiry time, revocation time, granting administrator, and timestamps. Do not model premium as an unaudited client-controlled boolean.
 - [x] Derive the existing `tarot:deep_reading=true` authorization server-side only while the premium entitlement is active and the account is enabled.
 - [x] Make expiry and revocation effective promptly; do not rely on a stale long-lived browser claim.
-- [ ] Check premium entitlement before ad-earned credits. Premium users must not consume rewarded-ad progress or credits when requesting DEEP.
+- [x] Check premium entitlement before ad-earned credits. Premium users must not consume rewarded-ad progress or credits when requesting DEEP.
 - [x] Keep premium entitlement and rewarded DEEP credits separate so granting or revoking premium never corrupts reward history.
 - [x] Store only identity and entitlement data required for account operation, document retention/deletion behavior, and never attach reading questions or generated answers to advertising records.
 

@@ -21,6 +21,26 @@ Detailed implementation work belongs in `TASK.md`.
 
 ---
 
+# Rewarded Ads for One DEEP Reading (2026-09-06)
+
+Rewarded DEEP access is implemented end to end but remains disabled by default. PostgreSQL seeds a singleton setting of three provider-confirmed rewarded-ad completions for one single-use DEEP credit. New reward sessions snapshot those values, progress and credits expire after 24 hours, and one completed bundle is allowed per rolling 24 hours.
+
+Only Google Publisher Tag's `rewardedSlotGranted` path reaches the grant endpoint. Each explicit attempt has a signed, short-lived, identity-bound, one-time nonce; close, skip, error, no-fill, and consent-denied paths do not increment progress. Anonymous visitors use a backend-issued secure opaque reward cookie, while signed-in progress and credits attach to the account. The ledger contains no clicks or reading content.
+
+DEEP authorization checks current premium access first and does not spend an ad-earned credit for premium users. Otherwise, one credit is atomically reserved for generation and finalized only for a valid result. A server generation failure releases the reservation; client cancellation consumes it. Admins can update the bounded threshold and credit count with optimistic concurrency. See [REWARDED_DEEP.md](REWARDED_DEEP.md) for routes, operations, and the residual browser-event forgery risk.
+
+Production enablement remains blocked until Google Ad Manager rewarded-web eligibility and Thailand/domain/placement support are confirmed, and policy, consent, legal, fraud, abuse, and cost reviews explicitly approve rollout.
+
+Verification completed:
+
+```text
+dotnet test TarotDestiny.sln --no-restore  → 106 passed
+apps/web: npm run build                    → passed (Next.js 16.3.2)
+apps/web: npm run test:smoke               → 28 passed
+```
+
+---
+
 # User Accounts and Premium DEEP Access (2026-09-05)
 
 The public application now has database-backed user accounts. Authentication uses a protected `HttpOnly`, `Secure`, `SameSite=Lax` cookie whose session identifier is revalidated against PostgreSQL on every authenticated request. Passwords use ASP.NET Core's adaptive password hasher; email-verification and password-reset values are short-lived, single-use, and stored only as hashes.
@@ -28,10 +48,10 @@ The public application now has database-backed user accounts. Authentication use
 Current authorization behavior:
 
 - Anonymous visitors and ordinary accounts retain unrestricted `STANDARD` readings.
-- `DEEP` is available only when the account is enabled, email-verified, and has an active, unrevoked `PREMIUM_DEEP` entitlement.
+- `DEEP` is available with an active, unrevoked `PREMIUM_DEEP` entitlement or one valid single-use ad-earned credit while the rewarded feature is enabled.
 - The backend derives the existing `tarot:deep_reading=true` claim from current database state. The browser cannot supply or persist that authority.
 - Password reset, email-verification privilege activation, account disablement, and premium grant/extension/revocation invalidate active sessions. Expiry is evaluated during request authentication.
-- Premium entitlements use optimistic concurrency and a separate audit history. They remain separate from the future rewarded-ad credit ledger.
+- Premium entitlements use optimistic concurrency and a separate audit history. They remain separate from the rewarded-ad credit ledger.
 - Browser administration requires an authenticated `ADMIN` role. The legacy header key remains available only for non-browser operational compatibility and is no longer stored by the admin UI.
 
 The API exposes CSRF-protected register/login/logout/recovery/account-deletion routes plus role-protected user search, creation, status, premium management, and entitlement history. Public registration and SMTP delivery are disabled by default. The `UserAccountsAndPremiumAccess` migration seeds only role definitions—never a user or credential—and [ACCOUNT_SECURITY.md](ACCOUNT_SECURITY.md) documents one-time first-admin bootstrap and production operations.

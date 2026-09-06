@@ -159,7 +159,7 @@ export default function RewardedDeepUnlock({
   }
 
   if (!status?.enabled || premiumEntitled) return null;
-  const capped = status.nextEligibleAt !== null && status.validAdCompletions >= status.requiredAdCompletions;
+  const capped = status.nextEligibleAt !== null;
 
   return (
     <section className="rewarded-unlock" id="rewarded-deep-unlock" aria-labelledby="rewarded-deep-heading">
