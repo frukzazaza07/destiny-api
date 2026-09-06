@@ -2636,7 +2636,7 @@ Status: **Implemented; production SMTP/legal approval and production-shaped migr
 
 ## Test and Acceptance Criteria
 
-- [ ] API tests cover registration policy, login, logout, current-user lookup, password hashing, verification/reset tokens, token expiry and replay, lockout, rate limits, CSRF, cookie flags, and session invalidation.
+- [x] API tests cover registration policy, login, logout, current-user lookup, password hashing, verification/reset tokens, token expiry and replay, lockout, rate limits, CSRF, cookie flags, and session invalidation.
 - [ ] Authorization tests prove anonymous and ordinary users cannot use DEEP or call admin endpoints, active premium users can use DEEP, and expired, revoked, disabled, or forged claims are rejected.
 - [ ] Concurrency tests prove simultaneous premium updates are consistent and that premium DEEP requests never consume an ad-earned credit.
 - [ ] Admin tests cover user creation, duplicate email rejection, role enforcement, premium grant/extension/revocation, expiry, pagination, and audit history.

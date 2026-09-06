@@ -28,11 +28,32 @@ public sealed class AccountServiceTests
         var login = await fixture.Service.LoginAsync("reader@example.test", "Strong-pass-123!", default);
         Assert.IsTrue(login.Succeeded);
         await fixture.Service.RequestPasswordResetAsync("reader@example.test", default);
-        await fixture.Service.ResetPasswordAsync("reader@example.test", fixture.Notifications.ResetToken!, "New-strong-456!", default);
+        var resetToken = fixture.Notifications.ResetToken!;
+        var reset = await fixture.Service.ResetPasswordAsync("reader@example.test", resetToken, "New-strong-456!", default);
+        Assert.IsTrue(reset.Succeeded);
+        Assert.AreEqual(AccountResultCode.InvalidToken,
+            (await fixture.Service.ResetPasswordAsync("reader@example.test", resetToken, "Another-strong-789!", default)).Code);
 
         Assert.IsNull(await fixture.Service.ValidateSessionAsync(login.Value!.Account.UserId!.Value, login.Value.SessionId, default));
         Assert.AreEqual(AccountResultCode.InvalidCredentials, (await fixture.Service.LoginAsync("reader@example.test", "Strong-pass-123!", default)).Code);
         Assert.IsTrue((await fixture.Service.LoginAsync("reader@example.test", "New-strong-456!", default)).Succeeded);
+    }
+
+    [TestMethod]
+    public async Task RegistrationStoresAnAdaptiveHashInsteadOfThePassword()
+    {
+        const string password = "Strong-pass-123!";
+        await using var fixture = await AccountFixture.CreateAsync(publicRegistration: true);
+
+        var registered = await fixture.Service.RegisterAsync("hash@example.test", password, default);
+
+        Assert.IsTrue(registered.Succeeded);
+        var user = await fixture.FindUserAsync("hash@example.test");
+        Assert.IsNotNull(user);
+        Assert.AreNotEqual(password, user.PasswordHash);
+        Assert.AreEqual(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<UserAccountEntity>().VerifyHashedPassword(user, user.PasswordHash, password));
     }
 
     [TestMethod]
@@ -75,15 +96,20 @@ public sealed class AccountServiceTests
     }
 
     [TestMethod]
-    public async Task ExpiredRecoveryTokenIsRejected()
+    public async Task ExpiredVerificationAndPasswordResetTokensAreRejected()
     {
         await using var fixture = await AccountFixture.CreateAsync(publicRegistration: true);
         await fixture.Service.RegisterAsync("expires@example.test", "Strong-pass-123!", default);
+        var verificationToken = fixture.Notifications.VerificationToken!;
+        await fixture.Service.RequestPasswordResetAsync("expires@example.test", default);
+        var resetToken = fixture.Notifications.ResetToken!;
         fixture.Clock.Advance(TimeSpan.FromMinutes(61));
 
-        var result = await fixture.Service.ConfirmEmailAsync("expires@example.test", fixture.Notifications.VerificationToken!, default);
+        var verification = await fixture.Service.ConfirmEmailAsync("expires@example.test", verificationToken, default);
+        var reset = await fixture.Service.ResetPasswordAsync("expires@example.test", resetToken, "New-strong-456!", default);
 
-        Assert.AreEqual(AccountResultCode.InvalidToken, result.Code);
+        Assert.AreEqual(AccountResultCode.InvalidToken, verification.Code);
+        Assert.AreEqual(AccountResultCode.InvalidToken, reset.Code);
     }
 
     [TestMethod]
@@ -137,6 +163,9 @@ public sealed class AccountServiceTests
                 TestSupport.LoggerFactory.CreateLogger<AccountService>());
             return new(database, service, notifications, clock);
         }
+
+        public Task<UserAccountEntity?> FindUserAsync(string email) =>
+            _database.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Email == email);
 
         public ValueTask DisposeAsync() => _database.DisposeAsync();
     }

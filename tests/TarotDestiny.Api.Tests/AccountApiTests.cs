@@ -41,14 +41,16 @@ public sealed class AccountApiTests
         using var rejected = await client.PostAsJsonAsync("/api/auth/login", new { email = "admin@example.test", password = "Strong-admin-123!" });
         Assert.AreEqual(HttpStatusCode.Forbidden, rejected.StatusCode);
 
-        var token = await GetCsrfAsync(client);
+        using var csrfResponse = await client.GetAsync("/api/auth/csrf");
+        var token = (await ReadDataAsync<JsonElement>(csrfResponse)).GetProperty("token").GetString()!;
+        var csrfCookie = csrfResponse.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith("__Host-Tarot.Csrf=", StringComparison.Ordinal));
+        AssertHardenedCookie(csrfCookie);
         using var request = JsonRequest(HttpMethod.Post, "/api/auth/login", new { email = "admin@example.test", password = "Strong-admin-123!" }, token);
         using var response = await client.SendAsync(request);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
         var cookie = response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("__Host-Tarot.Auth=", StringComparison.Ordinal));
-        StringAssert.Contains(cookie, "secure", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(cookie, "httponly", StringComparison.OrdinalIgnoreCase);
-        StringAssert.Contains(cookie, "samesite=lax", StringComparison.OrdinalIgnoreCase);
+        AssertHardenedCookie(cookie);
 
         using var me = await client.GetAsync("/api/auth/me");
         var account = (await ReadDataAsync<JsonElement>(me));
@@ -113,6 +115,12 @@ public sealed class AccountApiTests
         await factory.BootstrapAdminAsync();
         using var client = factory.CreateSecureClient();
         await LoginAsync(client, "admin@example.test", "Strong-admin-123!");
+
+        using var missingCsrfLogout = await client.PostAsJsonAsync("/api/auth/logout", new { });
+        Assert.AreEqual(HttpStatusCode.Forbidden, missingCsrfLogout.StatusCode);
+        var stillAuthenticated = await ReadDataAsync<JsonElement>(await client.GetAsync("/api/auth/me"));
+        Assert.IsTrue(stillAuthenticated.GetProperty("authenticated").GetBoolean());
+
         var csrf = await GetCsrfAsync(client);
         using var logout = JsonRequest(HttpMethod.Post, "/api/auth/logout", new { }, csrf);
         using var logoutResponse = await client.SendAsync(logout);
@@ -130,6 +138,103 @@ public sealed class AccountApiTests
             lastStatus = response.StatusCode;
         }
         Assert.AreEqual(HttpStatusCode.TooManyRequests, lastStatus);
+    }
+
+    [TestMethod]
+    public async Task VerificationAndPasswordResetEndpointsRejectReplayAndResetRevokesSession()
+    {
+        await using var factory = new AccountApiFactory(publicRegistration: true);
+        using var client = factory.CreateSecureClient();
+        var csrf = await GetCsrfAsync(client);
+
+        using var register = JsonRequest(HttpMethod.Post, "/api/auth/register", new
+        {
+            email = "recovery@example.test", password = "Strong-user-123!"
+        }, csrf);
+        using var registered = await client.SendAsync(register);
+        Assert.AreEqual(HttpStatusCode.OK, registered.StatusCode, await registered.Content.ReadAsStringAsync());
+
+        var verificationToken = factory.Notifications.VerificationToken!;
+        using var confirmVerification = JsonRequest(HttpMethod.Post, "/api/auth/email-verification/confirm", new
+        {
+            email = "recovery@example.test", token = verificationToken
+        }, csrf);
+        using var verified = await client.SendAsync(confirmVerification);
+        Assert.AreEqual(HttpStatusCode.OK, verified.StatusCode, await verified.Content.ReadAsStringAsync());
+
+        using var replayVerification = JsonRequest(HttpMethod.Post, "/api/auth/email-verification/confirm", new
+        {
+            email = "recovery@example.test", token = verificationToken
+        }, csrf);
+        using var verificationReplay = await client.SendAsync(replayVerification);
+        Assert.AreEqual(HttpStatusCode.BadRequest, verificationReplay.StatusCode);
+
+        await LoginAsync(client, "recovery@example.test", "Strong-user-123!");
+        csrf = await GetCsrfAsync(client);
+        using var requestReset = JsonRequest(HttpMethod.Post, "/api/auth/password-reset/request", new
+        {
+            email = "recovery@example.test"
+        }, csrf);
+        using var resetRequested = await client.SendAsync(requestReset);
+        Assert.AreEqual(HttpStatusCode.OK, resetRequested.StatusCode, await resetRequested.Content.ReadAsStringAsync());
+
+        var resetToken = factory.Notifications.ResetToken!;
+        using var confirmReset = JsonRequest(HttpMethod.Post, "/api/auth/password-reset/confirm", new
+        {
+            email = "recovery@example.test", token = resetToken,
+            newPassword = "New-strong-456!", confirmPassword = "New-strong-456!"
+        }, csrf);
+        using var reset = await client.SendAsync(confirmReset);
+        Assert.AreEqual(HttpStatusCode.OK, reset.StatusCode, await reset.Content.ReadAsStringAsync());
+
+        using var me = await client.GetAsync("/api/auth/me");
+        Assert.IsFalse((await ReadDataAsync<JsonElement>(me)).GetProperty("authenticated").GetBoolean());
+
+        csrf = await GetCsrfAsync(client);
+        using var replayReset = JsonRequest(HttpMethod.Post, "/api/auth/password-reset/confirm", new
+        {
+            email = "recovery@example.test", token = resetToken,
+            newPassword = "Another-strong-789!", confirmPassword = "Another-strong-789!"
+        }, csrf);
+        using var resetReplay = await client.SendAsync(replayReset);
+        Assert.AreEqual(HttpStatusCode.BadRequest, resetReplay.StatusCode);
+
+        csrf = await GetCsrfAsync(client);
+        using var oldPassword = JsonRequest(HttpMethod.Post, "/api/auth/login", new
+        {
+            email = "recovery@example.test", password = "Strong-user-123!"
+        }, csrf);
+        using var oldPasswordResponse = await client.SendAsync(oldPassword);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, oldPasswordResponse.StatusCode);
+        await LoginAsync(client, "recovery@example.test", "New-strong-456!");
+    }
+
+    [TestMethod]
+    public async Task RegistrationAndRecoveryEndpointsEnforceTheirRateLimits()
+    {
+        await using var factory = new AccountApiFactory(publicRegistration: true);
+        using var client = factory.CreateSecureClient();
+        var csrf = await GetCsrfAsync(client);
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            using var request = JsonRequest(HttpMethod.Post, "/api/auth/register", new
+            {
+                email = $"rate-{attempt}@example.test", password = "Strong-user-123!"
+            }, csrf);
+            using var response = await client.SendAsync(request);
+            Assert.AreEqual(attempt < 3 ? HttpStatusCode.OK : HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            using var request = JsonRequest(HttpMethod.Post, "/api/auth/password-reset/request", new
+            {
+                email = "unknown@example.test"
+            }, csrf);
+            using var response = await client.SendAsync(request);
+            Assert.AreEqual(attempt < 5 ? HttpStatusCode.OK : HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
     }
 
     private static object ValidDeepReading() => new
@@ -160,6 +265,14 @@ public sealed class AccountApiTests
         return request;
     }
 
+    private static void AssertHardenedCookie(string cookie)
+    {
+        StringAssert.Contains(cookie, "secure", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(cookie, "httponly", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(cookie, "samesite=lax", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(cookie, "path=/", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<T> ReadDataAsync<T>(HttpResponseMessage response)
     {
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
@@ -170,6 +283,7 @@ public sealed class AccountApiTests
     private sealed class AccountApiFactory(bool publicRegistration = true) : WebApplicationFactory<Program>
     {
         private readonly string _databaseName = Guid.NewGuid().ToString();
+        public RecordingNotifications Notifications { get; } = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -184,6 +298,8 @@ public sealed class AccountApiTests
                 services.RemoveAll<IAccountService>();
                 services.AddDbContext<TarotDbContext>(options => options.UseInMemoryDatabase(_databaseName));
                 services.AddScoped<IAccountService, AccountService>();
+                services.RemoveAll<IAccountNotificationSender>();
+                services.AddSingleton<IAccountNotificationSender>(Notifications);
                 services.RemoveAll<ITarotReadingService>();
                 services.AddSingleton<ITarotReadingService>(new StubReadingService());
             });
@@ -203,6 +319,24 @@ public sealed class AccountApiTests
             var accounts = scope.ServiceProvider.GetRequiredService<IAccountService>();
             var result = await accounts.BootstrapAdminAsync("admin@example.test", "Strong-admin-123!", default);
             Assert.IsTrue(result.Succeeded);
+        }
+    }
+
+    private sealed class RecordingNotifications : IAccountNotificationSender
+    {
+        public string? VerificationToken { get; private set; }
+        public string? ResetToken { get; private set; }
+
+        public Task SendEmailVerificationAsync(string email, string token, CancellationToken cancellationToken)
+        {
+            VerificationToken = token;
+            return Task.CompletedTask;
+        }
+
+        public Task SendPasswordResetAsync(string email, string token, CancellationToken cancellationToken)
+        {
+            ResetToken = token;
+            return Task.CompletedTask;
         }
     }
 
