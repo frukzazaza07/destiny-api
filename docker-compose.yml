@@ -3,6 +3,7 @@ name: ${COMPOSE_PROJECT_NAME:-tarot-destiny}
 x-api-environment: &api-environment
   ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
   ASPNETCORE_HTTP_PORTS: "5000"
+  ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
   Postgres__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-tarot_destiny};Username=${POSTGRES_USER:-tarot};Password=${POSTGRES_PASSWORD:-tarot-development-only};Timeout=5;Command Timeout=30
   Redis__ConnectionString: redis:6379,abortConnect=false,connectTimeout=2000,syncTimeout=2000
   Classifier__UseGrpc: "true"
