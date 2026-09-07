@@ -171,6 +171,7 @@ services:
       - "5000"
     volumes:
       - account-dataprotection:/var/lib/tarot-dataprotection
+    command: [ "--bootstrap-admin" ]
     depends_on:
       migrate:
         condition: service_completed_successfully
