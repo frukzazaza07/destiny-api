@@ -50,7 +50,15 @@ function useLabelTexture(lines: string[], background = "#173c3c") {
     context.fillStyle = background === "#eee2c6" ? "#47351e" : "#fff2d6";
     const rows = key.split("\n");
     context.font = `bold ${rows.length > 2 ? 60 : 48}px sans-serif`;
-    rows.forEach((line, index) => context.fillText(line, 256, canvas.height / 2 + (index - (rows.length - 1) / 2) * 86, 450));
+    rows.forEach((line, index) => {
+      const metrics = context.measureText(line);
+      const scale = Math.min(1, 450 / (metrics.width || 1));
+      // Center the visible glyphs, including Thai marks, rather than the font's baseline box.
+      const x = canvas.width / 2 + (metrics.actualBoundingBoxLeft - metrics.actualBoundingBoxRight) * scale / 2;
+      const y = canvas.height / 2 + (index - (rows.length - 1) / 2) * 86
+        + (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2;
+      context.fillText(line, x, y, 450);
+    });
     const result = new CanvasTexture(canvas);
     result.colorSpace = SRGBColorSpace;
     return result;
