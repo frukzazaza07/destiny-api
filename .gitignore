@@ -12,6 +12,7 @@ blob-report/
 *.suo
 *.log
 *.tsbuildinfo
+apps/web/.tmp/
 .env
 .env.local
 .venv/

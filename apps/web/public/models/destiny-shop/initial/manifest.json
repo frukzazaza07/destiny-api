@@ -1,0 +1,46 @@
+{
+  "revision": 1,
+  "source": "scripts/build-shop-models.mjs",
+  "assets": [
+    {
+      "file": "shop.glb",
+      "bytes": 1318648,
+      "triangles": 56352,
+      "drawCalls": 14,
+      "animations": []
+    },
+    {
+      "file": "advisor.glb",
+      "bytes": 214980,
+      "triangles": 8016,
+      "drawCalls": 22,
+      "animations": [
+        "idle",
+        "seated",
+        "greeting",
+        "listening",
+        "shuffling",
+        "dealing",
+        "reveal",
+        "result"
+      ]
+    },
+    {
+      "file": "visitor.glb",
+      "bytes": 156032,
+      "triangles": 6832,
+      "drawCalls": 20,
+      "animations": [
+        "idle",
+        "walk"
+      ]
+    },
+    {
+      "file": "tarot-back.glb",
+      "bytes": 6648,
+      "triangles": 86,
+      "drawCalls": 3,
+      "animations": []
+    }
+  ]
+}

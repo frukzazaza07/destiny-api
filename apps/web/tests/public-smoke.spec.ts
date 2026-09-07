@@ -218,3 +218,31 @@ test("public shell remains keyboard accessible and does not overflow mobile or d
     expect(overflows, `${viewport.width}px layout`).toBe(false);
   }
 });
+
+test("immersive shop keeps a direct accessible path to the existing Tarot client", async ({ page }) => {
+  await page.goto("/en");
+  const shop = page.getByRole("region", { name: "Interactive three-dimensional Tarot consultation room" });
+  await expect(shop).toBeVisible();
+  await expect(shop.getByText("Step inside the destiny shop")).toBeVisible();
+
+  await shop.getByRole("button", { name: "Start Tarot now" }).click();
+  await expect(page.locator("#tarot-consultation")).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Choose, reveal, reflect." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Shuffle Deck" })).toBeEnabled();
+});
+
+test("visitor can walk to the 3D advisor and enter the API-backed consultation", async ({ page }) => {
+  await page.goto("/en");
+  await page.getByRole("button", { name: "Enter 3D shop" }).click();
+  await expect(page.getByTestId("destiny-shop-canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Preparing the reception, gallery, and Tarot room…")).toBeHidden({ timeout: 15_000 });
+
+  await page.keyboard.down("w");
+  await page.waitForTimeout(3_700);
+  await page.keyboard.up("w");
+  await expect(page.getByRole("status").filter({ hasText: "The Tarot advisor is ready" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Sit for a Tarot reading" }).click();
+  await expect(page.locator("#tarot-consultation")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Shuffle Deck" })).toBeEnabled();
+});

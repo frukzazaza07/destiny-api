@@ -2643,3 +2643,140 @@ Status: **Implemented; production SMTP/legal approval and production-shaped migr
 - [ ] Browser tests cover Thai and English registration/login/logout/account flows, keyboard accessibility, invalid credentials, expired sessions, premium status changes, and DEEP button availability.
 - [ ] Security tests confirm passwords, reset tokens, session cookies, admin credentials, and unrelated environment values never appear in responses, logs, OpenAPI examples, analytics, or advertising requests.
 - [ ] Migration tests cover clean installation and upgrade of an existing production-shaped database without creating default credentials or granting premium access to existing users.
+
+# Next Task — Immersive 3D Destiny Shop: Tarot Vertical Slice
+
+Status: **Functional Phase 1 vertical slice implemented with procedural placeholder art; final asset production, Thai cultural review, measured performance budgets, audio, and future services remain planned**
+
+## Implementation Checkpoint — 2026-09-06
+
+- [x] Add an optional, dynamically loaded React Three Fiber shop to the localized Thai and English reading route.
+- [x] Build a compact procedural room with a human Tarot advisor, consultation table, two chairs, cards, rug, shelves, books, lamps, plants, lighting, and a simple visitor avatar.
+- [x] Support bounded WASD/arrow-key walking, touch/pointer movement controls, orbit camera control, advisor proximity feedback, advisor click interaction, and a visible exit.
+- [x] Provide a direct “Start Tarot” path, WebGL capability fallback, reduced-motion handling, semantic HTML controls, and the complete existing 2D experience.
+- [x] Hand consultation control to the existing `reading-client.tsx`, which remains connected to `/api/readings/options`, `/api/deck/shuffle`, `/api/deck/{sessionId}/resolve`, `/api/readings/generate`, authentication, and rewarded-DEEP access. No new endpoint was necessary for this vertical slice.
+- [x] Add browser coverage for the direct accessible path and for walking to the advisor before entering the API-backed Tarot consultation.
+- [x] Pass content validation, TypeScript checking, the production build, all 30 browser tests, and desktop/mobile visual inspection.
+
+## Product Vision
+
+Create a walkable 3D destiny shop where a visitor can explore the space, approach a human Thai spiritual advisor, sit at a consultation table, and choose a service. Phase 1 must deliver one complete, useful service—Tarot—before adding astrology, numerology, palm reading, or other practices.
+
+The 3D experience is a presentation layer over the existing reading system. It must reuse the current Tarot API, account, STANDARD/DEEP entitlement, consent, safety, localization, and reading-state rules rather than creating a second reading implementation.
+
+The shop should feel grounded, warm, and believable instead of like a fantasy game. Treat the advisor as a skilled human host, not a supernatural authority, and continue to describe readings as entertainment and self-reflection rather than guaranteed prediction or professional advice.
+
+## Recommended Technical Direction
+
+- [ ] Run a time-boxed prototype with `three`, React Three Fiber v9, and Drei because the web app already uses React 19. Do not add the dependencies to Production until the prototype passes the performance and accessibility gates.
+- [ ] Add `@react-three/rapier` v2 only if the walkable prototype needs collision, ramps, or a physical character controller. Prefer simple bounded movement and authored colliders for the small Phase 1 room.
+- [ ] Load the 3D shop as a client-only, route-level bundle. Keep account, legal, guide, admin, SEO, and initial server-rendered content outside the WebGL bundle.
+- [ ] Keep the existing 2D reading journey as a first-class fallback and a visible “Start Tarot now” shortcut. Lack of WebGL, reduced motion, low device capability, keyboard-only use, or user preference must never block a reading.
+- [ ] Keep scene state separate from business state. The 3D layer may request transitions such as `APPROACH_ADVISOR` or `OPEN_TAROT`, while the existing reading client remains authoritative for question, cards, API calls, errors, and results.
+
+## Priority 0 — Experience, Cultural Review, and Prototype Gate
+
+- [ ] Write the Phase 1 journey before producing final art: enter shop → understand available service → approach advisor or use shortcut → start Tarot → ask/select topic → shuffle and draw → receive reading → continue or leave.
+- [ ] Confirm whether the camera is first-person or close third-person during the prototype. Test motion sickness, small screens, touch input, keyboard navigation, and discoverability before selecting one.
+- [ ] Define one compact interior room, not an open world. Target a useful consultation within 30 seconds of entering the experience.
+- [ ] Create a grey-box prototype containing only floor, walls, entrance, counter/table, advisor placeholder, interaction hotspot, camera, and movement boundaries.
+- [ ] Test on representative low-, medium-, and high-capability phones plus desktop. Record frame time, memory, initial transferred bytes, loading time, battery/thermal behavior, and crash rate.
+- [ ] Establish budgets before final art: compressed scene assets, texture memory, draw calls, active lights, shadow maps, and animation count. Provide Low, Standard, and High visual-quality profiles selected automatically with a manual override.
+- [ ] Validate the concept with Thai cultural reviewers. Avoid mixing sacred Buddhist, Brahmin, animist, and commercial fortune-telling symbols as generic decoration. Document the meaning and approved use of every culturally specific costume, shrine, text, or ritual object.
+- [ ] Do not copy a real practitioner’s face, voice, clothing, shop, or personal story without documented permission. Avoid exoticized labels or caricatures in Thai and English copy.
+
+### Priority 0 Exit Gate
+
+- [ ] A visitor can load the prototype, move or use the direct shortcut, locate the advisor, and open a placeholder Tarot panel on mobile and desktop.
+- [ ] The experience works without pointer lock and provides an obvious exit from immersive mode.
+- [ ] The 2D fallback remains fully functional when WebGL is disabled or the scene fails to load.
+- [ ] Cultural review, art direction, target devices, and measurable performance budgets are approved before detailed models are commissioned.
+
+## Priority 1 — Map and Navigation Blockout
+
+- [ ] Design a small, legible floor plan with four zones: entrance/return point, service introduction, Tarot consultation table, and quiet result/reflection area.
+- [ ] Use lighting, rug/floor treatment, furniture direction, and bilingual signage to guide the visitor toward the advisor without a minimap.
+- [ ] Provide one collision-safe walking route wide enough for comfortable camera movement. Remove traps, narrow gaps, invisible steps, and decorative collision clutter.
+- [ ] Add spawn, advisor interaction, sit/consult, result, and exit anchors as named scene nodes so interactions do not depend on mesh names or coordinates scattered through code.
+- [ ] Add invisible simplified colliders for walls and large furniture. Decorative meshes must not be physics colliders.
+- [ ] Support WASD and arrow keys, mouse/touch camera control, a mobile movement control, interaction key/button, and an always-visible “Start Tarot” shortcut.
+- [ ] Prevent the camera from clipping through the advisor, table, walls, or cards. Restore a safe position when the player leaves the permitted area.
+
+## Priority 1 — Required 3D Models and Assets
+
+Create reusable Blender source files and optimized runtime GLB assets. Model in this order:
+
+1. [ ] **Map shell:** floor, walls, ceiling, doors/windows, consultation alcove, and collision proxies.
+2. [ ] **Consultation furniture:** correctly scaled Tarot table, two chairs, counter or service sign, rug, and a small storage cabinet.
+3. [ ] **Advisor character:** respectful Thai adult human with neutral idle, greeting, seated, listening, card-handling, and result-presenting poses. Start with a licensed or custom low-poly base and validate skin tone, clothing, proportions, and gestures with human reviewers.
+4. [ ] **Tarot hero props:** deck, card back, face-card material/atlas, table cloth, draw positions, spread positions, and one readable service menu.
+5. [ ] **Lighting props:** practical lamps and restrained candles/incense only where culturally and physically appropriate; provide non-particle and low-quality variants.
+6. [ ] **Atmosphere props:** shelves, books, plants, curtains, framed artwork, containers, and small objects used to tell a coherent shop story.
+7. [ ] **Optional player representation:** hands or a simple avatar only after camera and interaction testing proves it improves presence.
+
+For every asset:
+
+- [ ] Record creator, source, license, permitted modifications, attribution, cultural-review status, polygon count, materials, texture sizes, animations, and final file size in an asset manifest.
+- [ ] Use real-world scale, consistent origins, named nodes, baked transforms, LODs where useful, shared materials, and compressed textures. Strip unused cameras, lights, bones, and animation tracks before export.
+- [ ] Keep selectable Tarot card faces crisp enough to recognize while avoiding dozens of unique high-resolution materials; prefer an atlas or controlled texture-loading strategy.
+- [ ] Never ship unlicensed marketplace assets, fonts, music, voices, tarot artwork, or AI-generated likenesses with unclear commercial rights.
+
+## Priority 1 — Connect the Existing API
+
+- [ ] Refactor the current `reading-client.tsx` request/state orchestration into a shared Tarot flow controller or hook used by both the existing 2D interface and the new 3D scene. Do not copy the fetch sequence, validation, or entitlement logic into scene components.
+- [ ] On consultation startup, call `GET /api/readings/options` with browser credentials to load server-authoritative reading modes, DEEP entitlement, ad-earned credit availability, upgrade URL, and available model tiers.
+- [ ] Start every draw with `POST /api/deck/shuffle` using the selected spread. Store the returned `sessionId`, spread, and selectable card count in shared flow state; do not shuffle or manufacture a trusted deck solely inside Three.js.
+- [ ] After the visitor selects the required 3D card indexes, call `POST /api/deck/{sessionId}/resolve`. Use only the returned card IDs, positions, and orientations as the authoritative revealed cards.
+- [ ] Generate the result with `POST /api/readings/generate`, passing the existing contract fields: composed question, resolved spread, locale, reading mode, DEEP model tier when applicable, and the exact resolved cards.
+- [ ] Keep `credentials: "include"`, the existing same-origin/API-base behavior, response-envelope parsing, CSRF/session behavior where applicable, request cancellation, stale-response protection, retry rules, and localized errors.
+- [ ] Reuse the existing authentication and rewarded-DEEP components and endpoints. The 3D client must never create entitlement flags, grant credits, store bearer tokens, or decide whether a DEEP request is authorized.
+- [ ] Drive scene animation from shared states such as `IDLE`, `SHUFFLING`, `SELECTING`, `RESOLVING`, `GENERATING`, `REVEALING`, `COMPLETE`, and `ERROR`; scene animation must react to API state and must not replace it.
+- [ ] Preserve the server-provided order and identity of cards when placing them on the 3D table. Selecting a 3D mesh records only its selectable index until the resolve endpoint returns the real card.
+- [ ] Reuse existing endpoints where their contracts fit, but freely add or revise an HTTP endpoint when the 3D experience needs a cleaner contract, better performance, stronger security, or simpler recovery. Do not force the 3D client through an unsuitable endpoint merely to avoid backend work. Keep backward compatibility for the existing 2D client or migrate both clients together. Update controller response annotations, generated OpenAPI schemas, the Development Swagger UI, API contract tests, and frontend runtime validation in the same change.
+- [ ] Add contract tests proving that the 2D and 3D adapters create equivalent requests and interpret the same success, validation, forbidden, missing-session, and upstream-failure responses.
+
+## Priority 1 — Complete Tarot Consultation Loop
+
+- [ ] Show a clear bilingual interaction prompt when the visitor enters the advisor hotspot. Do not depend on hovering over a small 3D object.
+- [ ] Transition to a stable consultation camera and accessible HTML interface when the visitor chooses Tarot. Lock walking input while the consultation UI is active and restore it safely when closed.
+- [ ] Reuse the current Thai/English topic, spread, reading-mode, question, shuffle, draw, resolve, generate, reveal, error, retry, and reset behavior.
+- [ ] Represent selected cards on the 3D table, but keep equivalent card names, positions, orientations, explanations, status, and controls in semantic HTML for screen readers and keyboard users.
+- [ ] Synchronize advisor animation to existing reading phases: greet/idle, shuffle, deal, wait/listen, reveal, present result, and recover from error. Animation timing must never delay or fabricate an API result.
+- [ ] Present the full structured reading in accessible HTML. The 3D advisor may introduce or highlight it, but must not be the only way to read, copy, scroll, or retry the result.
+- [ ] Preserve all current rules for STANDARD, premium DEEP, rewarded access, authentication, privacy, and safe language. Do not send camera, movement, device, or scene data to the reading API.
+- [ ] Keep the consultation and reading-result areas free of regular display ads. A rewarded ad may appear only through the existing explicit, consent-gated unlock flow.
+
+## Priority 2 — Visual, Audio, and Interaction Polish
+
+- [ ] Replace the approved blockout with final modular art without moving interaction anchors or changing the tested route.
+- [ ] Add restrained baked lighting, contact shadows, ambient motion, dust or smoke only on capable devices, and color grading that preserves card and text readability.
+- [ ] Blend advisor animations and add natural eye/head attention without uncanny tracking. Never imply that the camera or microphone is observing the visitor.
+- [ ] Add optional ambient sound and advisor voice only after licensing, Thai pronunciation, localization, consent, mute, volume, caption, and autoplay behavior are approved. Default to captions and never require audio.
+- [ ] Add focus indicators, interaction feedback, loading progress, network-loss recovery, scene-reload recovery, and a direct return to the normal site.
+- [ ] Measure whether 3D improves Tarot starts, completion, return visits, and user satisfaction. Do not optimize for time trapped in the scene.
+
+## Priority 3 — Future Services After Tarot Proves the Platform
+
+- [ ] Add a data-driven service catalog so unavailable services can be shown as “coming later” without pretending that they work.
+- [ ] Evaluate one future service at a time—such as Thai astrology, numerology, palm reading, or dream reflection—with its own subject-matter, cultural, safety, privacy, API, and monetization review.
+- [ ] Reuse the same shop, advisor interaction contract, accessibility shell, loading system, and entitlement boundary. Do not fork a new movement engine or duplicate account logic per service.
+- [ ] Add additional rooms, practitioners, multiplayer, persistent avatars, inventory, or an outdoor map only after analytics show that the compact single-room experience is valuable and its performance budget is stable.
+
+## Testing and Acceptance Criteria
+
+- [ ] Browser tests cover supported desktop and mobile controls, interaction prompts, consultation entry/exit, direct shortcut, route changes, API errors, reload recovery, and the complete Tarot state machine in Thai and English.
+- [ ] Accessibility tests cover keyboard-only completion, visible focus, screen-reader reading flow, reduced motion, high zoom, captions, color contrast, and the 2D fallback.
+- [ ] Performance tests enforce the approved asset, memory, frame-rate, load-time, and draw-call budgets for Low, Standard, and High profiles.
+- [ ] Visual tests cover camera collision, aspect ratios, safe areas, text/card legibility, model clipping, animation transitions, missing assets, and low-quality rendering.
+- [ ] Security and privacy tests confirm 3D analytics never contain questions, readings, chosen cards/topics, account identity, entitlement data, or precise behavioral replays of the consultation.
+- [ ] Asset audit confirms commercial rights, attribution, optimization, and cultural-review records for everything shipped.
+- [ ] Existing API, account, monetization, content, sitemap, admin, and 2D reading tests remain green.
+- [ ] No new HTTP endpoint is added unless its request/response schemas are included in generated OpenAPI and verified in Development Swagger UI, which remains unavailable in Production unless explicitly secured.
+
+## Phase 1 Definition of Done
+
+- [ ] A first-time visitor can enter the 3D shop, understand that Tarot is available, reach the advisor, complete a real STANDARD or authorized DEEP reading, review the result, and leave or restart without confusion.
+- [ ] The same end-to-end Tarot reading remains possible through the direct 2D path on every supported device.
+- [ ] The advisor, room, furniture, cards, animation, lighting, and audio that ship have documented ownership and cultural approval.
+- [ ] The experience meets the agreed accessibility and performance budgets and introduces no regression to current reading, authentication, privacy, or monetization behavior.
+- [ ] Other spiritual services remain explicitly out of Phase 1 and are not implemented until the Tarot vertical slice is measured and approved.

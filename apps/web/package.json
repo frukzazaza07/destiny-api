@@ -4,13 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "prebuild": "npm run validate:content",
+    "prebuild": "npm run validate:content && npm run validate:3d-assets",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "validate:content": "node scripts/validate-content.mjs",
     "validate:content:ready": "node scripts/validate-content.mjs --ready",
+    "validate:3d-assets": "node scripts/validate-3d-assets.mjs",
+    "models:build": "node scripts/build-shop-models.mjs",
+    "models:inspect": "node scripts/inspect-shop-models.mjs",
     "test:smoke": "playwright test",
     "test:smoke:update": "playwright test --update-snapshots"
   },
@@ -18,12 +21,15 @@
     "@mdx-js/loader": "3.1.1",
     "@mdx-js/react": "3.1.1",
     "@next/mdx": "16.3.2",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/rapier": "^2.2.0",
     "lucide-react": "^1.34.0",
     "next": "16.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "remark-frontmatter": "5.0.0",
-    "remark-mdx-frontmatter": "5.2.0"
+    "remark-mdx-frontmatter": "5.2.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
@@ -31,6 +37,7 @@
     "@types/node": "26.2.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "@types/three": "^0.185.0",
     "typescript": "7.0.2"
   }
 }

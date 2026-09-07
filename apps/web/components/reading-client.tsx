@@ -1,81 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Locale } from "../lib/i18n";
-import RewardedDeepUnlock, { type RewardedDeepStatus } from "./rewarded-deep-unlock";
-
-type QuestionMode = "TOPIC" | "QUESTION";
-type Spread = "DESTINY_3" | "DAILY_1";
-type Orientation = "UPRIGHT" | "REVERSED";
-type CacheStatus = "HIT" | "MISS" | "SKIPPED";
-type ReadingMode = "STANDARD" | "DEEP";
-type ShuffleVisualStep = "MIXING" | "SETTLING" | "DEALING";
-type ReadingPhase =
-  | "IDLE"
-  | "SHUFFLING"
-  | "SELECTING"
-  | "RESOLVING"
-  | "GENERATING"
-  | "REVEALING"
-  | "COMPLETE"
-  | "ERROR";
-type FailureStep = "SHUFFLING" | "RESOLVING" | "GENERATING";
-type TopicId = "GENERAL" | "LOVE" | "CAREER" | "MONEY" | "FAMILY" | "PERSONAL_GROWTH";
-
-type SelectedCard = {
-  position: string;
-  cardId: string;
-  orientation: Orientation;
-};
-
-type ShuffleResponse = {
-  sessionId: string;
-  spread: string;
-  cardCount: number;
-  selectCount: number;
-};
-
-type ReadingResponse = {
-  title: string;
-  summary: string;
-  mainTheme: string;
-  cards: Array<SelectedCard & { cardName: string; interpretation: string }>;
-  opportunities: string[];
-  challenges: string[];
-  guidance: string[];
-  reflectionQuestion: string;
-  closingMessage: string;
-  cacheStatus: CacheStatus;
-  classification: {
-    domain: string;
-    intent: string;
-    confidence: number;
-    personalization: string;
-  };
-  cacheKey: string | null;
-  readingMode: ReadingMode;
-  generationSource: "RULE_ENGINE" | "LLM";
-  generationModel: string | null;
-  modelTier: string | null;
-  inferenceWorker: string | null;
-  inferenceProvider: string | null;
-  promptVariant: string | null;
-  qualityScore: number | null;
-};
-
-type ReadingOptions = {
-  deepReading: {
-    enabled: boolean;
-    entitled: boolean;
-    upgradeUrl: string | null;
-    authenticated: boolean;
-    premiumExpiresAt: string | null;
-    availableAdEarnedCredits: number;
-  };
-  modelTiers: Array<{ id: string; model: string; available: boolean }>;
-};
+import RewardedDeepUnlock from "./rewarded-deep-unlock";
+import {
+  tarotTopics,
+  type ReadingMode,
+  type ReadingPhase,
+  type ReadingResponse,
+  type SelectedCard,
+  type ShuffleVisualStep,
+  type Spread,
+  type TarotReadingFlow,
+  type TopicId,
+} from "./use-tarot-reading-flow";
 
 type UiCopy = {
   headline: string;
@@ -127,11 +67,7 @@ type UiCopy = {
 };
 
 const isDev = process.env.NODE_ENV !== "production";
-const shuffleTiming = {
-  minimumMix: 900,
-  settle: 620,
-  deal: 1700
-} as const;
+const shuffleDealDuration = 1700;
 
 const copy: Record<Locale, UiCopy> = {
   en: {
@@ -232,120 +168,57 @@ const copy: Record<Locale, UiCopy> = {
   }
 };
 
-const topics: Array<{
-  id: TopicId;
-  label: Record<Locale, string>;
-  request: Record<Locale, string>;
-}> = [
-    {
-      id: "GENERAL",
-      label: { en: "General", th: "ภาพรวม" },
-      request: { en: "Give me general guidance for this period.", th: "ขอคำแนะนำภาพรวมสำหรับช่วงเวลานี้" }
-    },
-    {
-      id: "LOVE",
-      label: { en: "Love", th: "ความรัก" },
-      request: { en: "Give me guidance about love and relationships.", th: "ขอคำแนะนำเกี่ยวกับความรักและความสัมพันธ์" }
-    },
-    {
-      id: "CAREER",
-      label: { en: "Career", th: "การงาน" },
-      request: { en: "Give me guidance about work and my career path.", th: "ขอคำแนะนำเกี่ยวกับงานและเส้นทางอาชีพ" }
-    },
-    {
-      id: "MONEY",
-      label: { en: "Money", th: "การเงิน" },
-      request: { en: "Give me guidance about money and finances.", th: "ขอคำแนะนำเกี่ยวกับการเงิน" }
-    },
-    {
-      id: "FAMILY",
-      label: { en: "Family", th: "ครอบครัว" },
-      request: { en: "Give me guidance about family matters.", th: "ขอคำแนะนำเกี่ยวกับครอบครัว" }
-    },
-    {
-      id: "PERSONAL_GROWTH",
-      label: { en: "Personal Growth", th: "การพัฒนาตนเอง" },
-      request: {
-        en: "Give me guidance about personal growth and self-development.",
-        th: "ขอคำแนะนำเกี่ยวกับการเติบโตและพัฒนาตนเอง"
-      }
-    }
-  ];
-
-export default function ReadingClient({ initialLocale }: { initialLocale: Locale }) {
+export default function ReadingClient({
+  initialLocale,
+  flow,
+  immersive = false,
+}: {
+  initialLocale: Locale;
+  flow: TarotReadingFlow;
+  immersive?: boolean;
+}) {
   const router = useRouter();
   const locale = initialLocale;
-  const [spread, setSpread] = useState<Spread>("DESTINY_3");
-  const [questionMode, setQuestionMode] = useState<QuestionMode>("TOPIC");
-  const [topic, setTopic] = useState<TopicId>("CAREER");
-  const [question, setQuestion] = useState("");
-  const [readingMode, setReadingMode] = useState<ReadingMode>("STANDARD");
-  const [modelTier, setModelTier] = useState("CORE");
-  const [modelTiers, setModelTiers] = useState<ReadingOptions["modelTiers"]>([]);
-  const [deepAccess, setDeepAccess] = useState<ReadingOptions["deepReading"]>({
-    enabled: false,
-    entitled: false,
-    upgradeUrl: null,
-    authenticated: false,
-    premiumExpiresAt: null,
-    availableAdEarnedCredits: 0
-  });
-  const [rewardUnlockAvailable, setRewardUnlockAvailable] = useState(false);
-  const [shuffle, setShuffle] = useState<ShuffleResponse | null>(null);
-  const [selected, setSelected] = useState<number[]>([]);
-  const [cards, setCards] = useState<SelectedCard[]>([]);
-  const [reading, setReading] = useState<ReadingResponse | null>(null);
-  const [phase, setPhase] = useState<ReadingPhase>("IDLE");
-  const [shuffleVisualStep, setShuffleVisualStep] = useState<ShuffleVisualStep>("MIXING");
-  const [failureStep, setFailureStep] = useState<FailureStep | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const flowVersion = useRef(0);
-  const activeRequest = useRef<AbortController | null>(null);
   const readingHeading = useRef<HTMLHeadingElement | null>(null);
   const reduceMotion = useReducedMotion();
-
   const text = copy[locale];
-  const selectLimit = shuffle?.selectCount ?? (spread === "DAILY_1" ? 1 : 3);
-  const selectedTopic = topics.find((item) => item.id === topic) ?? topics[0];
-  const composedQuestion =
-    questionMode === "TOPIC"
-      ? `TOPIC: ${selectedTopic.id}\nREQUEST: ${selectedTopic.request[locale]}`
-      : question.trim();
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const selectionOrder = useMemo(() => new Map(selected.map((index, order) => [index, order + 1])), [selected]);
-  const isWorking = phase === "SHUFFLING" || phase === "RESOLVING" || phase === "GENERATING";
-  const controlsLocked = isWorking || phase === "REVEALING";
+  const {
+    spread,
+    questionMode,
+    topic,
+    question,
+    readingMode,
+    modelTier,
+    modelTiers,
+    deepAccess,
+    rewardUnlockAvailable,
+    shuffle,
+    selected,
+    selectedSet,
+    selectionOrder,
+    cards,
+    reading,
+    phase,
+    shuffleVisualStep,
+    failureStep,
+    error,
+    selectLimit,
+    isWorking,
+    controlsLocked,
+    changeSpread,
+    changeQuestionMode,
+    changeTopic,
+    changeQuestion,
+    changeReadingMode: setFlowReadingMode,
+    changeModelTier,
+    handleRewardStatus,
+    startShuffle,
+    toggleCard,
+    revealAndRead,
+    retryFailedStep,
+    resetReadingFlow,
+  } = flow;
   const phaseStatus = getPhaseStatus(phase, readingMode, shuffleVisualStep, text);
-  const handleRewardStatus = useCallback((status: RewardedDeepStatus) => {
-    setRewardUnlockAvailable(status.enabled);
-    setDeepAccess((current) => ({
-      ...current,
-      entitled: current.premiumExpiresAt !== null || status.availableDeepCredits > 0,
-      availableAdEarnedCredits: status.availableDeepCredits,
-    }));
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    fetch(apiUrl("/api/readings/options"), { credentials: "include", cache: "no-store" })
-      .then((response) => (response.ok ? readApiData<ReadingOptions>(response) : null))
-      .then((options: ReadingOptions | null) => {
-        if (active && options?.deepReading) {
-          setDeepAccess(options.deepReading);
-          setModelTiers(options.modelTiers ?? []);
-          const firstAvailable = options.modelTiers?.find((tier) => tier.available);
-          if (firstAvailable) setModelTier(firstAvailable.id);
-        }
-      })
-      .catch(() => {
-        // Standard readings remain available when capability discovery fails.
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (phase !== "REVEALING" || !reading) return;
@@ -355,73 +228,12 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
     if (headingBounds && (headingBounds.top < 0 || headingBounds.bottom > window.innerHeight)) {
       readingHeading.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     }
-
-    const version = flowVersion.current;
-    const timer = window.setTimeout(() => {
-      if (flowVersion.current === version) setPhase("COMPLETE");
-    }, reduceMotion ? 0 : 850);
-
-    return () => window.clearTimeout(timer);
   }, [phase, reading, reduceMotion]);
-
-  useEffect(() => () => {
-    flowVersion.current += 1;
-    activeRequest.current?.abort();
-  }, []);
-
-  function cancelActiveFlow() {
-    flowVersion.current += 1;
-    activeRequest.current?.abort();
-    activeRequest.current = null;
-  }
-
-  function beginRequest() {
-    cancelActiveFlow();
-    const controller = new AbortController();
-    activeRequest.current = controller;
-    return { controller, version: flowVersion.current };
-  }
-
-  function isCurrent(version: number) {
-    return flowVersion.current === version;
-  }
-
-  function resetReadingFlow() {
-    cancelActiveFlow();
-    setShuffle(null);
-    setSelected([]);
-    setCards([]);
-    setReading(null);
-    setPhase("IDLE");
-    setShuffleVisualStep("MIXING");
-    setFailureStep(null);
-    setError(null);
-  }
 
   function changeLocale(nextLocale: Locale) {
     if (nextLocale === locale) return;
     resetReadingFlow();
     router.push(`/${nextLocale}`);
-  }
-
-  function changeSpread(nextSpread: Spread) {
-    setSpread(nextSpread);
-    resetReadingFlow();
-  }
-
-  function changeQuestionMode(nextMode: QuestionMode) {
-    setQuestionMode(nextMode);
-    resetReadingFlow();
-  }
-
-  function changeTopic(nextTopic: TopicId) {
-    setTopic(nextTopic);
-    resetReadingFlow();
-  }
-
-  function changeQuestion(nextQuestion: string) {
-    setQuestion(nextQuestion);
-    resetReadingFlow();
   }
 
   function changeReadingMode(nextMode: ReadingMode) {
@@ -435,167 +247,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
       else window.location.assign(`/${locale}/login`);
       return;
     }
-
-    setReadingMode(nextMode);
-    resetReadingFlow();
-  }
-
-  async function startShuffle() {
-    if (questionMode === "QUESTION" && !question.trim()) {
-      setError(text.questionRequired);
-      setFailureStep(null);
-      setPhase("ERROR");
-      return;
-    }
-
-    const { controller, version } = beginRequest();
-    setPhase("SHUFFLING");
-    setShuffleVisualStep("MIXING");
-    setFailureStep(null);
-    setError(null);
-    setShuffle(null);
-    setReading(null);
-    setCards([]);
-    setSelected([]);
-
-    try {
-      const responsePromise = fetch(apiUrl("/api/deck/shuffle"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spread }),
-        credentials: "include",
-        signal: controller.signal
-      });
-      const [response] = await Promise.all([
-        responsePromise,
-        waitFor(reduceMotion ? 0 : shuffleTiming.minimumMix, controller.signal)
-      ]);
-
-      if (!response.ok) throw new Error(await readApiError(response, text.shuffleError));
-      const nextShuffle = await readApiData<ShuffleResponse>(response);
-      if (!isCurrent(version)) return;
-
-      setShuffleVisualStep("SETTLING");
-      await waitFor(reduceMotion ? 0 : shuffleTiming.settle, controller.signal);
-      if (!isCurrent(version)) return;
-
-      setShuffle(nextShuffle);
-      setShuffleVisualStep("DEALING");
-      await waitFor(reduceMotion ? 0 : shuffleTiming.deal, controller.signal);
-      if (!isCurrent(version)) return;
-
-      activeRequest.current = null;
-      setPhase("SELECTING");
-    } catch (err) {
-      if (isAbortError(err) || !isCurrent(version)) return;
-      activeRequest.current = null;
-      setFailureStep("SHUFFLING");
-      setError(getRequestError(err, text.shuffleError, text.unavailableError));
-      setPhase("ERROR");
-    }
-  }
-
-  function toggleCard(index: number) {
-    if (!shuffle || phase !== "SELECTING") return;
-
-    setSelected((current) => {
-      if (current.includes(index)) return current.filter((item) => item !== index);
-      if (current.length >= selectLimit) return current;
-      return [...current, index];
-    });
-  }
-
-  async function revealAndRead() {
-    if (!shuffle || selected.length !== selectLimit) return;
-    const currentShuffle = shuffle;
-    const { controller, version } = beginRequest();
-    setPhase("RESOLVING");
-    setFailureStep(null);
-    setError(null);
-
-    try {
-      const resolved = await fetch(apiUrl(`/api/deck/${currentShuffle.sessionId}/resolve`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedIndexes: selected }),
-        credentials: "include",
-        signal: controller.signal
-      });
-
-      if (!resolved.ok) throw new Error(await readApiError(resolved, text.revealError));
-      const resolvedBody = await readApiData<{ cards: SelectedCard[] }>(resolved);
-      if (!isCurrent(version)) return;
-      setCards(resolvedBody.cards);
-      await generateReading(resolvedBody.cards, currentShuffle, controller, version);
-    } catch (err) {
-      if (isAbortError(err) || !isCurrent(version)) return;
-      activeRequest.current = null;
-      setFailureStep("RESOLVING");
-      setError(getRequestError(err, text.revealError, text.unavailableError));
-      setPhase("ERROR");
-    }
-  }
-
-  async function generateReading(
-    resolvedCards: SelectedCard[],
-    currentShuffle: ShuffleResponse,
-    controller: AbortController,
-    version: number
-  ) {
-    setPhase("GENERATING");
-
-    try {
-      const generatedPromise = fetch(apiUrl("/api/readings/generate"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: composedQuestion,
-          spread: currentShuffle.spread,
-          locale,
-          readingMode,
-          modelTier: readingMode === "DEEP" ? modelTier : null,
-          cards: resolvedCards
-        }),
-        credentials: "include",
-        signal: controller.signal
-      });
-      const [generated] = await Promise.all([
-        generatedPromise,
-        waitFor(reduceMotion ? 0 : 300, controller.signal)
-      ]);
-
-      if (!generated.ok) throw new Error(await readApiError(generated, text.readingError));
-      const nextReading = await readApiData<ReadingResponse>(generated);
-      if (!isCurrent(version)) return;
-      activeRequest.current = null;
-      setReading(nextReading);
-      if (readingMode === "DEEP" && !deepAccess.premiumExpiresAt && deepAccess.availableAdEarnedCredits > 0) {
-        const remaining = deepAccess.availableAdEarnedCredits - 1;
-        setDeepAccess((current) => ({ ...current, availableAdEarnedCredits: remaining, entitled: remaining > 0 }));
-      }
-      setFailureStep(null);
-      setPhase("REVEALING");
-    } catch (err) {
-      if (isAbortError(err) || !isCurrent(version)) return;
-      activeRequest.current = null;
-      setFailureStep("GENERATING");
-      setError(getRequestError(err, text.readingError, text.unavailableError));
-      setPhase("ERROR");
-    }
-  }
-
-  async function retryGeneration() {
-    if (!shuffle || cards.length === 0) return;
-    const { controller, version } = beginRequest();
-    setError(null);
-    setFailureStep(null);
-    await generateReading(cards, shuffle, controller, version);
-  }
-
-  function retryFailedStep() {
-    if (failureStep === "SHUFFLING") void startShuffle();
-    if (failureStep === "RESOLVING") void revealAndRead();
-    if (failureStep === "GENERATING") void retryGeneration();
+    setFlowReadingMode(nextMode);
   }
 
   const retryLabel = failureStep === "SHUFFLING"
@@ -605,7 +257,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
       : text.retryReading;
 
   return (
-    <div className="shell">
+    <div className={`shell ${immersive ? "immersive-reading-shell" : ""}`}>
       <section className="workspace">
         <aside className="control-panel">
           <div>
@@ -617,7 +269,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
           {readingMode === "DEEP" && modelTiers.length > 0 && (
             <div className="field">
               <label htmlFor="model-tier">Model tier</label>
-              <select id="model-tier" value={modelTier} disabled={controlsLocked} onChange={(event) => { setModelTier(event.target.value); resetReadingFlow(); }}>
+              <select id="model-tier" value={modelTier} disabled={controlsLocked} onChange={(event) => changeModelTier(event.target.value)}>
                 {modelTiers.map((tier) => (
                   <option key={tier.id} value={tier.id} disabled={!tier.available}>
                     {formatEnumLabel(tier.id)} · {tier.model}{tier.available ? "" : " (offline)"}
@@ -725,7 +377,7 @@ export default function ReadingClient({ initialLocale }: { initialLocale: Locale
             <div className="field">
               <label htmlFor="reading-topic">{text.topic}</label>
               <select id="reading-topic" value={topic} disabled={controlsLocked} onChange={(event) => changeTopic(event.target.value as TopicId)}>
-                {topics.map((item) => (
+                {tarotTopics.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.label[locale]}
                   </option>
@@ -906,7 +558,7 @@ function DealStage({ cardCount, reduceMotion }: { cardCount: number; reduceMotio
       const centerX = deckBounds.left + deckBounds.width / 2;
       const centerY = deckBounds.top + Math.min(deckBounds.height / 2, window.innerHeight * 0.32);
       const dealDuration = 760;
-      const availableStagger = Math.max(shuffleTiming.deal - dealDuration - 60, 0);
+      const availableStagger = Math.max(shuffleDealDuration - dealDuration - 60, 0);
       const delayStep = cards.length > 1 ? Math.min(15, availableStagger / (cards.length - 1)) : 0;
 
       animations = cards.map((card, index) => {
@@ -1073,89 +725,10 @@ function useReducedMotion() {
   return reduceMotion;
 }
 
-function waitFor(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new DOMException("The request was aborted.", "AbortError"));
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      signal.removeEventListener("abort", handleAbort);
-      resolve();
-    }, milliseconds);
-    const handleAbort = () => {
-      window.clearTimeout(timer);
-      reject(new DOMException("The request was aborted.", "AbortError"));
-    };
-    signal.addEventListener("abort", handleAbort, { once: true });
-  });
-}
-
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
 function formatEnumLabel(value: string) {
   return value
     .toLowerCase()
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-async function readApiError(response: Response, fallback: string) {
-  try {
-    const payload: unknown = await response.json();
-    const messages = collectErrorMessages(payload);
-    if (messages.length > 0) return `${fallback} ${messages.join(" ")}`;
-  } catch {
-    // Some infrastructure errors have an empty or non-JSON response body.
-  }
-
-  return `${fallback} (${response.status})`;
-}
-
-function collectErrorMessages(payload: unknown): string[] {
-  if (typeof payload === "string" && payload.trim()) return [payload.trim()];
-  if (Array.isArray(payload)) return payload.flatMap(collectErrorMessages);
-  if (!payload || typeof payload !== "object") return [];
-
-  const body = payload as Record<string, unknown>;
-  const directMessages = [body.error, body.detail, body.message, body.title].flatMap(collectErrorMessages);
-  const validationMessages = collectErrorMessages(body.errors);
-  const messages = [...directMessages, ...validationMessages];
-
-  if (messages.length > 0) return [...new Set(messages)];
-  return [...new Set(Object.values(body).flatMap(collectErrorMessages))];
-}
-
-async function readApiData<T>(response: Response): Promise<T> {
-  const payload: unknown = await response.json();
-
-  if (isRecord(payload) && typeof payload.success === "boolean" && "data" in payload) {
-    return payload.data as T;
-  }
-
-  return payload as T;
-}
-
-function apiUrl(path: string) {
-  return `${getApiBaseUrl()}${path}`;
-}
-
-function getApiBaseUrl() {
-  const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (configuredBase) return configuredBase.replace(/\/+$/, "");
-  return "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function getRequestError(error: unknown, fallback: string, unavailable: string) {
-  if (error instanceof TypeError) return unavailable;
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
 }

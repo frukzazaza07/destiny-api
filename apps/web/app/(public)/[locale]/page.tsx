@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import ReadingClient from "../../../components/reading-client";
+import ImmersiveReadingJourney from "../../../components/immersive-reading-journey";
 import { getGuides } from "../../../lib/guides";
 import { isLocale, localizedPath, type Locale } from "../../../lib/i18n";
 import { getMonetizationRuntimeConfig } from "../../../lib/monetization-runtime";
@@ -89,7 +89,7 @@ export default async function LocalizedReadingPage({ params }: PageProps) {
 
   return (
     <main id="main-content">
-      <ReadingClient initialLocale={locale} />
+      <ImmersiveReadingJourney initialLocale={locale} />
       <HomePublisherContent locale={locale} />
     </main>
   );
