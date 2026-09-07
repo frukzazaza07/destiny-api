@@ -80,10 +80,13 @@ try {
     if (!actual || ["bytes", "triangles", "drawCalls"].some(key => asset[key] !== actual[key]) || JSON.stringify(asset.animations) !== JSON.stringify(actual.clips)) errors.push(`Stale model manifest: ${asset.file}`);
   }
 } catch (error) { errors.push(`Cannot read model manifest: ${error.message}`); }
-const modelTotal = [...inspected.entries()].reduce((sum, [name, asset]) => ({
-  triangles: sum.triangles + asset.triangles * (name === "tarot-back.glb" ? 78 : 1),
-  drawCalls: sum.drawCalls + asset.drawCalls,
-}), { triangles: 0, drawCalls: 0 });
+// Walking renders all characters and three animated deck packets. Consultation
+// hides the visitor and renders at most twelve card boxes plus four controls.
+const walkingAssets = ["shop.glb", "advisor.glb", "visitor.glb"].map(name => inspected.get(name));
+const walking = walkingAssets.reduce((sum, asset) => ({ triangles: sum.triangles + (asset?.triangles ?? 0), drawCalls: sum.drawCalls + (asset?.drawCalls ?? 0) }), { triangles: 36, drawCalls: 3 });
+const consultationAssets = ["shop.glb", "advisor.glb"].map(name => inspected.get(name));
+const consultation = consultationAssets.reduce((sum, asset) => ({ triangles: sum.triangles + (asset?.triangles ?? 0), drawCalls: sum.drawCalls + (asset?.drawCalls ?? 0) }), { triangles: 12 * 12 + 4 * 2, drawCalls: 12 + 4 });
+const modelTotal = { triangles: Math.max(walking.triangles, consultation.triangles), drawCalls: Math.max(walking.drawCalls, consultation.drawCalls) };
 if (modelTotal.triangles > 80_000 || modelTotal.drawCalls > 60) errors.push(`Base scene exceeds 80,000 triangles / 60 draw calls: ${JSON.stringify(modelTotal)}`);
 
 if (initialBytes > mobileBudget) errors.push(`Shared initial 3D payload is ${(initialBytes / 1024 / 1024).toFixed(2)} MB; mobile budget is 6 MB. Move desktop-only detail to a progressive HIGH-quality bundle.`);
@@ -93,5 +96,5 @@ if (errors.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(`Validated ${files.length} 3D asset files; initial payload ${(initialBytes / 1024 / 1024).toFixed(2)} MB (mobile ${mobileBudget / 1024 / 1024} MB, desktop ${desktopBudget / 1024 / 1024} MB budgets).`);
-  console.log(`Complete scene with 78 instanced card backs: ${modelTotal.triangles} triangles, ${modelTotal.drawCalls} base draw calls (shadow passes additional).`);
+  console.log(`Walking / interactive table scene maximum: ${modelTotal.triangles} triangles, ${modelTotal.drawCalls} base draw calls (shadow passes additional).`);
 }

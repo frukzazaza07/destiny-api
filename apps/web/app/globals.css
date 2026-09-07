@@ -2102,7 +2102,7 @@ button.account-nav { cursor: pointer; }
   inset: 72px 18px 18px auto;
   display: flex;
   flex-direction: column;
-  width: min(980px, calc(100% - 36px));
+  width: 360px;
   overflow: hidden;
   border: 1px solid rgba(213, 173, 97, 0.42);
   border-radius: 20px;
@@ -2155,7 +2155,7 @@ button.account-nav { cursor: pointer; }
 }
 
 .immersive-reading-shell .workspace {
-  grid-template-columns: minmax(245px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -2173,7 +2173,7 @@ button.account-nav { cursor: pointer; }
 }
 
 .immersive-reading-shell .deck-area {
-  min-height: 640px;
+  min-height: 0;
   padding: 18px;
 }
 
@@ -2292,4 +2292,30 @@ button.account-nav { cursor: pointer; }
     min-height: 0;
     padding: 14px;
   }
+}
+
+/* The consultation panel reserves space; the canvas stays interactive beside it. */
+.destiny-shop.is-entered.is-consulting .destiny-shop-stage {
+  width: calc(100% - 390px);
+}
+.is-consulting .inworld-consultation-toolbar { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; }
+.is-consulting .inworld-consultation-toolbar > div:last-child { justify-content: space-between; gap: 8px; }
+.is-consulting .shop-zone-indicator i, .is-consulting .shop-quality, .is-consulting .shop-icon-action { display: none; }
+.immersive-reading-shell .workspace { gap: 12px; }
+.immersive-reading-shell .control-panel { gap: 14px; }
+.immersive-reading-shell .control-panel h1 { font-size: 1.2rem; }
+.immersive-reading-shell .insight-grid, .immersive-reading-shell .revealed-cards { grid-template-columns: 1fr; }
+.immersive-reading-shell.has-reading .deck-area { order: -1; }
+.immersive-reading-shell .debug { display: none; }
+.table-hint { position: absolute; bottom: 12px; left: 12px; right: 12px; text-align: center; pointer-events: none; color: #fff2d6; text-shadow: 0 1px 4px #000; font-size: .8rem; }
+.table-hint p { margin: 4px 0; }
+.table-world-focus { position: absolute; z-index: 4; width: 2px; height: 2px; padding: 0; border: 0; overflow: hidden; opacity: 0; pointer-events: none; transform: translate(-50%, -50%); }
+.table-world-focus:focus-visible { width: max-content; max-width: 210px; height: auto; padding: 8px 12px; opacity: 1; overflow: visible; background: #173c3c; color: #fff2d6; outline: 2px solid #f9d78a; border-radius: 6px; }
+@media (max-width: 760px) {
+  .destiny-shop.is-entered.is-consulting .destiny-shop-stage { width: 100%; height: 56%; min-height: 0; }
+  .is-consulting .inworld-consultation { inset: 56% 8px 8px; width: auto; }
+  .is-consulting .inworld-consultation-toolbar { padding: 8px 12px; gap: 6px; }
+  .is-consulting .inworld-consultation-toolbar .shop-text-action { display: inline-block; }
+  .table-hint { bottom: 3px; font-size: .68rem; }
+  .table-hint p:first-child { display: none; }
 }

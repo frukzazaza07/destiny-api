@@ -10,11 +10,12 @@ import {
   useRapier,
 } from "@react-three/rapier";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Group, MathUtils, Raycaster, Vector3 } from "three";
 import type { Locale } from "../lib/i18n";
-import type { ReadingPhase, ShuffleVisualStep } from "./use-tarot-reading-flow";
-import { advisorAnimation, CharacterModel, ModelTarotDeck, ShopModel, useShopModels } from "./shop-models";
+import type { TarotReadingFlow } from "./use-tarot-reading-flow";
+import { advisorAnimation, CharacterModel, ShopModel, useShopModels } from "./shop-models";
+import TarotTable from "./tarot-table";
 
 export type Movement = { x: number; z: number };
 export type ShopZone = "ENTRANCE" | "GALLERY" | "TAROT_ROOM";
@@ -26,15 +27,11 @@ type DestinyShopCanvasProps = {
   movement: Movement;
   reduceMotion: boolean;
   quality: QualityProfile;
-  phase: ReadingPhase;
-  shuffleVisualStep: ShuffleVisualStep;
-  selectedCards: number[];
-  cardCount: number;
   consultationOpen: boolean;
+  flow: TarotReadingFlow;
   onInteractionChange: (interaction: ShopInteraction) => void;
   onZoneChange: (zone: ShopZone) => void;
   onInteract: () => void;
-  onCardSelect: (index: number) => void;
   onReady: () => void;
   onContextLost: () => void;
 };
@@ -55,12 +52,6 @@ export default function DestinyShopCanvas(props: DestinyShopCanvasProps) {
         dpr={dpr}
         camera={{ position: [0, 4.8, 15], fov: 51, near: 0.1, far: 70 }}
         gl={{ antialias: props.quality !== "LOW", alpha: false, powerPreference: "high-performance" }}
-        onCreated={({ gl }) => {
-          gl.domElement.addEventListener("webglcontextlost", (event) => {
-            event.preventDefault();
-            props.onContextLost();
-          }, { once: true });
-        }}
         fallback={<p>{props.locale === "th" ? "ไม่สามารถแสดงร้าน 3 มิติได้" : "The 3D shop is unavailable."}</p>}
         aria-label={props.locale === "th"
           ? "ร้านแห่งโชคชะตาสามมิติ มีโถงต้อนรับ แกลเลอรีบริการ และห้องไพ่ทาโรต์"
@@ -68,6 +59,7 @@ export default function DestinyShopCanvas(props: DestinyShopCanvasProps) {
       >
         <color attach="background" args={["#0e1517"]} />
         <fog attach="fog" args={["#11191a", 22, 49]} />
+        <ContextLossHandler onContextLost={props.onContextLost} />
         <Suspense fallback={null}>
           <Physics gravity={[0, -18, 0]} timeStep="vary" colliders={false}>
             <ShopScene {...props} />
@@ -79,6 +71,19 @@ export default function DestinyShopCanvas(props: DestinyShopCanvasProps) {
   );
 }
 
+function ContextLossHandler({ onContextLost }: { onContextLost: () => void }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const lost = (event: Event) => { event.preventDefault(); onContextLost(); };
+    canvas.addEventListener("webglcontextlost", lost);
+    // R3F deliberately loses the old context after unmount. Its delayed event
+    // must not close a newly entered shop.
+    return () => canvas.removeEventListener("webglcontextlost", lost);
+  }, [gl, onContextLost]);
+  return null;
+}
+
 class SceneFailureBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -87,10 +92,12 @@ class SceneFailureBoundary extends Component<{ children: ReactNode; onFailure: (
 }
 
 function ShopScene({
-  movement, reduceMotion, quality, phase, shuffleVisualStep, selectedCards, cardCount, consultationOpen,
-  onInteractionChange, onZoneChange, onInteract, onCardSelect, onReady,
+  movement, reduceMotion, quality, consultationOpen, flow, locale,
+  onInteractionChange, onZoneChange, onInteract, onReady,
 }: DestinyShopCanvasProps) {
+  const { phase, shuffleVisualStep } = flow;
   const models = useShopModels();
+  const [tableAnimation, setTableAnimation] = useState<string | null>(null);
   const playerBody = useRef<RapierRigidBody>(null);
   const playerCollider = useRef<RapierCollider>(null);
   const avatar = useRef<Group>(null);
@@ -103,7 +110,7 @@ function ShopScene({
   const pointer = useRef({ active: false, x: 0, y: 0 });
   const raycaster = useMemo(() => new Raycaster(), []);
   const { world } = useRapier();
-  const { camera, gl, scene } = useThree();
+  const { camera, gl, scene, size } = useThree();
   const characterController = useRef<ReturnType<typeof world.createCharacterController> | null>(null);
 
   useEffect(() => {
@@ -131,6 +138,7 @@ function ShopScene({
   useEffect(() => {
     const movementKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"]);
     const onKeyDown = (event: KeyboardEvent) => {
+      if (consultationOpen) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       if (movementKeys.has(event.code)) {
         event.preventDefault();
@@ -148,12 +156,17 @@ function ShopScene({
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", clearKeys);
     };
-  }, [onInteract, onInteractionChange]);
+  }, [onInteract, onInteractionChange, consultationOpen]);
+
+  useEffect(() => {
+    pressedKeys.current.clear();
+    pointer.current.active = false;
+  }, [consultationOpen]);
 
   useEffect(() => {
     const canvas = gl.domElement;
     const pointerDown = (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
+      if (event.pointerType === "touch" || consultationOpen) return;
       pointer.current = { active: true, x: event.clientX, y: event.clientY };
       canvas.setPointerCapture(event.pointerId);
     };
@@ -227,6 +240,14 @@ function ShopScene({
     const interaction: ShopInteraction = tarotDistance < 3.25 ? "TAROT" : receptionDistance < 2.7 ? "RECEPTION" : futureDistance < 2.6 ? "COMING_SOON" : null;
     if (interaction !== currentInteraction.current) { currentInteraction.current = interaction; onInteractionChange(interaction); }
 
+    if (consultationOpen) {
+      cameraTarget.set(0, 1.35, -10.05);
+      const framing = Math.max(1, .95 / (size.width / size.height));
+      cameraIdeal.set(0, 1.35 + 4.6 * framing, -10.05 + 4.4 * framing);
+      camera.position.lerp(cameraIdeal, reduceMotion ? 1 : 1 - Math.exp(-delta * 7));
+      camera.lookAt(cameraTarget);
+      return;
+    }
     cameraTarget.set(translation.x, translation.y + 1.15, translation.z);
     const distance = 5.4;
     cameraIdeal.set(
@@ -257,12 +278,12 @@ function ShopScene({
       <ShopColliders />
       {quality !== "LOW" && <pointLight position={[0, 3.8, -10]} color="#ffcf8a" intensity={12} distance={9} />}
       <group position={[0, -.24, -11.75]}>
-        <CharacterModel asset={models.advisor} animation={advisorAnimation(phase, shuffleVisualStep, consultationOpen || currentInteraction.current === "TAROT")} reduceMotion={reduceMotion} />
+        <CharacterModel asset={models.advisor} animation={tableAnimation ?? advisorAnimation(phase, shuffleVisualStep, consultationOpen || currentInteraction.current === "TAROT")} reduceMotion={reduceMotion} />
       </group>
-      <ModelTarotDeck asset={models.card} cardCount={cardCount} selected={selectedCards} enabled={phase === "SELECTING"} phase={phase} reduceMotion={reduceMotion} onSelect={onCardSelect} />
+      <TarotTable flow={flow} active={consultationOpen} reduceMotion={reduceMotion} locale={locale} onAnimation={setTableAnimation} />
       <RigidBody ref={playerBody} type="kinematicPosition" colliders={false} position={[0, 1, 11.1]} enabledRotations={[false, false, false]}>
         <CapsuleCollider ref={playerCollider} args={[0.52, 0.34]} friction={0} />
-        <group ref={avatar} position={[0, -.94, 0]} rotation={[0, Math.PI, 0]}>
+        <group ref={avatar} visible={!consultationOpen} position={[0, -.94, 0]} rotation={[0, Math.PI, 0]}>
           <CharacterModel asset={models.visitor} animation="idle" moving={walking} reduceMotion={reduceMotion} />
         </group>
       </RigidBody>

@@ -2780,3 +2780,23 @@ For every asset:
 - [ ] The advisor, room, furniture, cards, animation, lighting, and audio that ship have documented ownership and cultural approval.
 - [ ] The experience meets the agreed accessibility and performance budgets and introduces no regression to current reading, authentication, privacy, or monetization behavior.
 - [ ] Other spiritual services remain explicitly out of Phase 1 and are not implemented until the Tarot vertical slice is measured and approved.
+
+# Destiny Shaman — Interactive 3D Tarot Table
+
+## Outcome
+
+Complete card handling inside the 3D consultation room. The player taps the deck to shuffle, chooses anonymous cards on the table, and uses the table's Deal & reveal control. A compact nonmodal panel holds question/settings and reading text; mobile uses a bottom panel.
+
+## Implementation
+
+- [x] Replace the consultation modal with a seated table camera and an interactive canvas beside the text panel.
+- [x] Animate deck packets mixing and settling, cards spreading, selected cards dealing in order, and server-resolved faces flipping toward the player.
+- [x] Browse the full server-provided deck in groups of 12 with 3D previous/next controls; allow deselection and enforce the selection limit across pages.
+- [x] Support mouse, touch, visible keyboard focus, reduced motion, one-card/three-card spreads, and English/Thai controls.
+- [x] Reuse the shared reading flow, existing APIs and reading modes, retry only failed requests, and prevent duplicate requests.
+- [x] Preserve reading progress when leaving/re-entering or falling back from WebGL; restart cancels pending work.
+- [x] Keep card identities server-authoritative. Use styled text faces and orientation until a complete illustrated face asset set is available.
+- [x] Clean up WebGL-loss listeners so disposing an old scene cannot close a newly entered shop.
+- [x] Verify type checking, production build/asset budgets, canvas mouse/touch readings, keyboard/retry behavior, mobile visuals, and existing public/shop regressions (23 Playwright tests passed).
+
+No new HTTP endpoint or wire schema is introduced. The direct accessible reading path remains available.

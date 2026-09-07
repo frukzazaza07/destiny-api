@@ -51,7 +51,7 @@ test("GLB assets load only after entry, render all zones, and survive quality ch
   }
   await page.screenshot({ path: ".tmp/model-previews/in-shop-tarot-room.png" });
   await page.getByRole("button", { name: "Sit for a Tarot reading" }).click();
-  await expect(page.getByRole("dialog", { name: "Private Tarot consultation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Private Tarot consultation", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

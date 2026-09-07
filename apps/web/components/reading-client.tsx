@@ -257,7 +257,7 @@ export default function ReadingClient({
       : text.retryReading;
 
   return (
-    <div className={`shell ${immersive ? "immersive-reading-shell" : ""}`}>
+    <div className={`shell ${immersive ? "immersive-reading-shell" : ""} ${reading ? "has-reading" : ""}`}>
       <section className="workspace">
         <aside className="control-panel">
           <div>
@@ -398,11 +398,11 @@ export default function ReadingClient({
             </div>
           )}
 
-          <button className="primary" type="button" onClick={startShuffle} disabled={controlsLocked}>
+          {!immersive && <button className="primary" type="button" onClick={startShuffle} disabled={controlsLocked}>
             {shuffle ? text.shuffleAgain : text.shuffle}
-          </button>
+          </button>}
 
-          {shuffle && phase === "SELECTING" && (
+          {!immersive && shuffle && phase === "SELECTING" && (
             <button className={`secondary reveal-action ${selected.length === selectLimit ? "ready" : ""}`} type="button" onClick={revealAndRead} disabled={selected.length !== selectLimit}>
               {text.reveal}
             </button>
@@ -436,13 +436,13 @@ export default function ReadingClient({
             </span>
           </div>
 
-          {phase === "SHUFFLING" && (
+          {!immersive && phase === "SHUFFLING" && (
             shuffleVisualStep === "DEALING" && shuffle
               ? <DealStage cardCount={shuffle.cardCount} reduceMotion={reduceMotion} />
               : <ShuffleStage step={shuffleVisualStep} />
           )}
 
-          {!reading && phase !== "SHUFFLING" && phase !== "RESOLVING" && phase !== "GENERATING" && cards.length === 0 && (
+          {!immersive && !reading && phase !== "SHUFFLING" && phase !== "RESOLVING" && phase !== "GENERATING" && cards.length === 0 && (
             <div className={`deck-grid ${shuffle ? "is-ready" : "is-idle"}`} aria-label={text.deckLabel}>
               {Array.from({ length: shuffle?.cardCount ?? 78 }, (_, index) => (
                 <button
@@ -463,7 +463,7 @@ export default function ReadingClient({
             </div>
           )}
 
-          {!reading && (phase === "RESOLVING" || phase === "GENERATING" || (phase === "ERROR" && cards.length > 0)) && (
+          {!immersive && !reading && (phase === "RESOLVING" || phase === "GENERATING" || (phase === "ERROR" && cards.length > 0)) && (
             <div className="waiting-stage">
               <WaitingSpread cards={cards} count={selected.length} spread={spread} />
               {isWorking && <ReadingLoader label={phaseStatus} />}

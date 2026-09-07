@@ -61,7 +61,7 @@ const shopCopy = {
     comingSoon: "Coming later",
     tarotOpen: "Tarot · Open",
     consultationEyebrow: "Private Tarot consultation",
-    consultationIntro: "Choose your focus and select anonymous card backs. Card identities are revealed only after secure server resolution.",
+    consultationIntro: "Choose your focus, then tap the deck on the table to shuffle. Select your cards and tap Deal & reveal.",
   },
   th: {
     eyebrow: "ประสบการณ์ดูไพ่ทาโรต์เสมือนจริง",
@@ -104,7 +104,7 @@ const shopCopy = {
     comingSoon: "เร็ว ๆ นี้",
     tarotOpen: "ไพ่ทาโรต์ · เปิด",
     consultationEyebrow: "ห้องปรึกษาไพ่ทาโรต์ส่วนตัว",
-    consultationIntro: "เลือกหัวข้อและเลือกหลังไพ่โดยไม่เห็นตัวตน ไพ่จะถูกเปิดเผยหลังเซิร์ฟเวอร์ยืนยันอย่างปลอดภัยเท่านั้น",
+    consultationIntro: "เลือกหัวข้อ แล้วแตะสำรับบนโต๊ะเพื่อสับไพ่ เลือกไพ่แล้วแตะแจกและเปิดไพ่",
   },
 } as const;
 
@@ -220,7 +220,7 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
 
   return (
     <>
-      <section ref={shopRef} className={`destiny-shop ${entered ? "is-entered" : ""}`} aria-label={text.roomLabel} tabIndex={-1}>
+      <section ref={shopRef} className={`destiny-shop ${entered ? "is-entered" : ""} ${consultationOpen ? "is-consulting" : ""}`} aria-label={text.roomLabel} tabIndex={-1}>
         {!entered && <div className="destiny-shop-copy">
           <p className="eyebrow">{text.eyebrow}</p>
           <p className="destiny-shop-title">{text.title}</p>
@@ -233,22 +233,18 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
           </div>
         </div>}
 
-        <div className="destiny-shop-stage" inert={consultationOpen} aria-hidden={consultationOpen || undefined}>
+        <div className="destiny-shop-stage">
           {entered && webGlStatus === "available" ? (
             <DestinyShopCanvas
               locale={initialLocale}
               movement={combinedMovement}
               reduceMotion={reduceMotion}
               quality={quality}
-              phase={flow.phase}
-              shuffleVisualStep={flow.shuffleVisualStep}
-              selectedCards={flow.selected}
-              cardCount={flow.shuffle?.cardCount ?? 78}
               consultationOpen={consultationOpen}
+              flow={flow}
               onInteractionChange={setInteraction}
               onZoneChange={setZone}
               onInteract={handleInteract}
-              onCardSelect={flow.toggleCard}
               onReady={() => setSceneReady(true)}
               onContextLost={handleContextLost}
             />
@@ -263,8 +259,8 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
               <button type="button" className="shop-icon-action" aria-pressed={audioEnabled} onClick={toggleAudio}>{audioEnabled ? "🔊" : "🔇"}<span>{audioEnabled ? text.audioOn : text.audioMuted}</span></button>
               <button type="button" className="shop-secondary" onClick={exitShop}>{text.exit}</button>
             </header>
-            <div className="service-legend" aria-label={initialLocale === "th" ? "สถานะบริการ" : "Service status"}><span className="is-open">{text.tarotOpen}</span><span>{text.comingSoon}</span><span>{text.comingSoon}</span></div>
-            <div className="destiny-shop-hud">
+            {!consultationOpen && <div className="service-legend" aria-label={initialLocale === "th" ? "สถานะบริการ" : "Service status"}><span className="is-open">{text.tarotOpen}</span><span>{text.comingSoon}</span><span>{text.comingSoon}</span></div>}
+            {!consultationOpen && <div className="destiny-shop-hud">
               <p className={interaction === "TAROT" ? "is-ready" : ""} role="status" aria-live="polite">{status}</p>
               <small>{text.walkHint}</small>
               <TouchJoystick value={joystick} onChange={setJoystick} />
@@ -275,11 +271,11 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
                 <HoldButton label={text.right} symbol="D" onStart={() => setMovement({ x: 1, z: 0 })} onStop={() => setMovement({ x: 0, z: 0 })} />
               </div>
               <button type="button" className={`shop-consult-action ${interaction === "TAROT" ? "is-ready" : ""}`} onClick={handleInteract} disabled={interaction !== "TAROT"}>{interaction === "TAROT" ? text.consult : text.interact}</button>
-            </div>
+            </div>}
           </>}
         </div>
 
-        {entered && consultationOpen && <div className="inworld-consultation" role="dialog" aria-modal="true" aria-label={text.consultationEyebrow}>
+        {entered && consultationOpen && <div className="inworld-consultation" role="region" aria-label={text.consultationEyebrow}>
           <div className="inworld-consultation-toolbar">
             <div><p className="eyebrow">{text.consultationEyebrow}</p><p>{text.consultationIntro}</p></div>
             <div><button type="button" className="shop-text-action" onClick={flow.resetReadingFlow}>{text.restart}</button><button type="button" className="shop-secondary" onClick={closeConsultation}>{text.closeReading}</button></div>

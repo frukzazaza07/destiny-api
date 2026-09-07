@@ -323,6 +323,7 @@ export function useTarotReadingFlow({
   }, [composedQuestion, deepAccess.availableAdEarnedCredits, deepAccess.premiumExpiresAt, isCurrent, locale, messages, modelTier, readingMode, reduceMotion]);
 
   const startShuffle = useCallback(async () => {
+    if (activeRequest.current || controlsLocked) return;
     if (questionMode === "QUESTION" && !question.trim()) {
       setError(messages.questionRequired);
       setFailureStep(null);
@@ -368,10 +369,10 @@ export function useTarotReadingFlow({
       setError(getRequestError(cause, messages.shuffleError, messages.unavailableError));
       setPhase("ERROR");
     }
-  }, [beginRequest, isCurrent, messages, question, questionMode, reduceMotion, spread]);
+  }, [beginRequest, controlsLocked, isCurrent, messages, question, questionMode, reduceMotion, spread]);
 
   const toggleCard = useCallback((index: number) => {
-    if (!shuffle || phase !== "SELECTING") return;
+    if (!shuffle || phase !== "SELECTING" || !Number.isInteger(index) || index < 0 || index >= shuffle.cardCount) return;
     setSelected((current) => {
       if (current.includes(index)) return current.filter((item) => item !== index);
       if (current.length >= selectLimit) return current;
@@ -380,7 +381,7 @@ export function useTarotReadingFlow({
   }, [phase, selectLimit, shuffle]);
 
   const revealAndRead = useCallback(async () => {
-    if (!shuffle || selected.length !== selectLimit) return;
+    if (!shuffle || selected.length !== selectLimit || activeRequest.current || (phase !== "SELECTING" && failureStep !== "RESOLVING")) return;
     const currentShuffle = shuffle;
     const { controller, version } = beginRequest();
     setPhase("RESOLVING");
@@ -405,10 +406,10 @@ export function useTarotReadingFlow({
       setError(getRequestError(cause, messages.revealError, messages.unavailableError));
       setPhase("ERROR");
     }
-  }, [beginRequest, generateReading, isCurrent, messages, selectLimit, selected, shuffle]);
+  }, [beginRequest, failureStep, generateReading, isCurrent, messages, phase, selectLimit, selected, shuffle]);
 
   const retryGeneration = useCallback(async () => {
-    if (!shuffle || cards.length === 0) return;
+    if (!shuffle || cards.length === 0 || activeRequest.current) return;
     const { controller, version } = beginRequest();
     setError(null);
     setFailureStep(null);

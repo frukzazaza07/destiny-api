@@ -2,7 +2,7 @@
 
 import { useFrame, useLoader } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
-import { AnimationMixer, Group, InstancedMesh, Mesh, Object3D, type AnimationAction } from "three";
+import { AnimationMixer, Mesh, type AnimationAction } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { ReadingPhase, ShuffleVisualStep } from "./use-tarot-reading-flow";
 
@@ -61,45 +61,4 @@ export function CharacterModel({ asset, animation, moving, reduceMotion }: {
     if (!reduceMotion) mixer.update(Math.min(delta, .05));
   });
   return <primitive object={scene} dispose={null} />;
-}
-
-export function ModelTarotDeck({ asset, cardCount, selected, enabled, phase, reduceMotion, onSelect }: {
-  asset: GLTF; cardCount: number; selected: number[]; enabled: boolean; phase: ReadingPhase;
-  reduceMotion: boolean; onSelect: (index: number) => void;
-}) {
-  const parts = useMemo(() => {
-    const meshes: Mesh[] = [];
-    asset.scene.traverse(object => { if (object instanceof Mesh) meshes.push(object); });
-    return meshes;
-  }, [asset]);
-  const instances = useRef<Array<InstancedMesh | null>>([]);
-  const group = useRef<Group>(null);
-  const shown = Math.min(Math.max(cardCount, 0), 78);
-  useEffect(() => {
-    const dummy = new Object3D();
-    const columns = Math.min(shown, 13);
-    const rows = Math.ceil(shown / 13);
-    for (let index = 0; index < shown; index++) {
-      const column = index % 13, row = Math.floor(index / 13);
-      dummy.position.set((column - (columns - 1) / 2) * .25, 1.067 + (selected.includes(index) ? .075 : 0), (row - (rows - 1) / 2) * .39);
-      dummy.rotation.set(-Math.PI / 2, 0, 0);
-      dummy.updateMatrix();
-      for (const instance of instances.current) instance?.setMatrixAt(index, dummy.matrix);
-    }
-    for (const instance of instances.current) if (instance) {
-      instance.instanceMatrix.needsUpdate = true;
-      instance.computeBoundingSphere();
-    }
-  }, [selected, shown]);
-  useFrame(({ clock }) => {
-    if (!group.current) return;
-    const shuffling = phase === "SHUFFLING" && !reduceMotion;
-    group.current.rotation.y = shuffling ? Math.sin(clock.elapsedTime * 5) * .025 : 0;
-    group.current.position.y = shuffling ? .04 + Math.sin(clock.elapsedTime * 8) * .025 : 0;
-  });
-  // Every instance is the same anonymous back. Identity comes only from server resolution in the HTML result panel.
-  return <group ref={group} position={[0, 0, -9.9]}>{parts.map((part, index) =>
-    <instancedMesh key={part.uuid} ref={value => { instances.current[index] = value; }} args={[part.geometry, part.material, shown]} dispose={null}
-      onClick={event => { event.stopPropagation(); if (enabled && event.instanceId !== undefined) onSelect(event.instanceId); }} />
-  )}</group>;
 }
