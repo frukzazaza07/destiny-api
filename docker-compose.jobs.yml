@@ -4,6 +4,7 @@ services:
   api:
     environment:
       ReadingJobs__Enabled: "true"
+      ReadingJobs__AllowCloudForRequestsWithRawQuestion: ${ALLOW_CLOUD_RAW_QUESTION:-false}
       ReadingJobs__BrokerUri: amqp://tarot:${RABBITMQ_PASSWORD:?required}@rabbitmq:5672
       ReadingJobs__WorkerKey: ${READING_WORKER_KEY:?required}
       ReadingJobs__ProviderRef: cloud-default
@@ -20,14 +21,14 @@ services:
   rabbitmq:
     image: rabbitmq:4.1-alpine
     restart: unless-stopped
-    networks: [backend]
+    networks: [ backend ]
     environment:
       RABBITMQ_DEFAULT_USER: tarot
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?required}
     volumes:
       - rabbitmq_jobs:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -37,7 +38,7 @@ services:
       dockerfile: apps/worker/Dockerfile
     restart: unless-stopped
     stop_grace_period: 20s
-    networks: [backend, egress]
+    networks: [ backend, egress ]
     environment:
       BROKER_URI: amqp://tarot:${RABBITMQ_PASSWORD:?required}@rabbitmq:5672
       API_URL: http://api:5000
