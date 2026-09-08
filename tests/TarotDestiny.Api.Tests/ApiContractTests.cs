@@ -98,6 +98,11 @@ public sealed class ApiContractTests
         Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/premium", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/entitlements", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/rewards/deep/status", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/reading-jobs", out _));
+        Assert.IsTrue(paths.GetProperty("/api/reading-jobs/{id}/events").GetProperty("get").GetProperty("responses")
+            .GetProperty("200").GetProperty("content").TryGetProperty("text/event-stream", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/reading-jobs/{id}/cancel", out _));
+        Assert.IsTrue(paths.TryGetProperty("/internal/reading-jobs/{id}/claim", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/rewards/deep/sessions", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/rewards/deep/attempts", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/rewards/deep/attempts/close", out _));

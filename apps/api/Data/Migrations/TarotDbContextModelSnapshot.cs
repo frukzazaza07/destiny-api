@@ -337,6 +337,150 @@ namespace TarotDestiny.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TarotDestiny.Api.Data.ProviderAdmissionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Tokens")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("provider_admissions", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.ReadingJobEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreditId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("Deadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("PresenceUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderRef")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ReservationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Owner", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("State", "Deadline");
+
+                    b.ToTable("reading_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.ReadingOutboxEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Queue")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublishedAt");
+
+                    b.ToTable("reading_outbox", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.ReadingPresenceEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "ExpiresAt");
+
+                    b.ToTable("reading_presence", (string)null);
+                });
+
             modelBuilder.Entity("TarotDestiny.Api.Data.RewardedAdAttemptEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -883,6 +1027,15 @@ namespace TarotDestiny.Api.Data.Migrations
                         .HasConstraintName("fk_tarot_generated_answer_variant_answer");
 
                     b.Navigation("GeneratedAnswer");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.ReadingPresenceEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.ReadingJobEntity", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TarotDestiny.Api.Data.RewardedAdAttemptEntity", b =>

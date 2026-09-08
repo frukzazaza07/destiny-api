@@ -19,6 +19,7 @@ public class GlobalExceptionHandler : IExceptionHandler
     {
         var (code, error) = exception switch
         {
+            TarotDestiny.Api.Services.ReadingJobException job => ((ResponseCode)job.Status, job.Message),
             ArgumentException => (ResponseCode.INVALID_REQUEST, exception.Message),
             BadHttpRequestException => (ResponseCode.INVALID_REQUEST, "The request is invalid."),
             KeyNotFoundException => (ResponseCode.NOT_FOUND, exception.Message),

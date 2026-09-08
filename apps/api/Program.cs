@@ -57,7 +57,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(o => o.OperationFilter<ReadingJobOpenApiFilter>());
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TarotDestiny");
 var dataProtectionKeysPath = builder.Configuration["Account:DataProtectionKeysPath"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
@@ -243,7 +243,23 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddHttpClient<ILlmClient, LlmClient>();
+if (builder.Configuration.GetValue<bool>("ReadingJobs:Enabled"))
+    builder.Services.AddSingleton<ILlmClient, QueuedDeepOnlyLlmClient>();
+else
+    builder.Services.AddHttpClient<ILlmClient, LlmClient>();
+builder.Services.AddOptions<ReadingJobOptions>()
+    .Bind(builder.Configuration.GetSection("ReadingJobs"))
+    .PostConfigure(o => o.AllowCloudForRequestsWithRawQuestion = builder.Configuration.GetValue<bool>("LLM:AllowCloudForRequestsWithRawQuestion"))
+    .Validate(o => !o.Enabled || (Uri.TryCreate(o.BrokerUri, UriKind.Absolute, out var uri) &&
+        uri.Scheme is "amqp" or "amqps" && o.WorkerKey.Length >= 32 &&
+        o.DeadlineSeconds is >= 30 and <= 240 && o.ReconnectGraceSeconds >= 5 &&
+        o.HeartbeatSeconds > 0 && o.PresenceLeaseSeconds > o.HeartbeatSeconds &&
+        o.ExecutionLeaseSeconds >= 15 && o.MaxConcurrency > 0 && o.RequestsPerMinute > 0 &&
+        o.TokensPerMinute > 0 && o.MaxQueuedJobs > 0 && o.MaxOutputTokens > 0 && o.MaxAttempts is >= 1 and <= 5 &&
+        !string.IsNullOrWhiteSpace(o.ProviderRef) && o.ProviderRef.Length <= 100 && !string.IsNullOrWhiteSpace(o.Model)), "Invalid queued reading configuration.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<ReadingJobBroker>();
+builder.Services.AddHostedService<ReadingJobExpiry>();
 var classifierGrpcAddress = builder.Configuration["Classifier:GrpcAddress"] ?? "http://127.0.0.1:50051";
 builder.Services.AddGrpcClient<TarotDestiny.Classifier.V1.ClassifierService.ClassifierServiceClient>(options =>
 {
@@ -290,6 +306,7 @@ else
     builder.Services.AddScoped<IClassifierTrainingStore, ClassifierTrainingStore>();
     builder.Services.AddScoped<IAccountService, AccountService>();
     builder.Services.AddScoped<IRewardedDeepService, RewardedDeepService>();
+    builder.Services.AddScoped<ReadingJobService>();
 }
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IPasswordHasher<UserAccountEntity>, PasswordHasher<UserAccountEntity>>();
@@ -319,6 +336,8 @@ builder.Services.AddHostedService(services => services.GetRequiredService<CacheW
 builder.Services.AddScoped<ITarotReadingService, TarotReadingService>();
 
 var app = builder.Build();
+if (app.Services.GetRequiredService<IOptions<ReadingJobOptions>>().Value.Enabled && string.IsNullOrWhiteSpace(postgresConnectionString))
+    throw new InvalidOperationException("Queued readings require PostgreSQL.");
 
 if (args.Contains("--migrate", StringComparer.OrdinalIgnoreCase))
 {

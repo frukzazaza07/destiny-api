@@ -467,6 +467,9 @@ export default function ReadingClient({
             <div className="waiting-stage">
               <WaitingSpread cards={cards} count={selected.length} spread={spread} />
               {isWorking && <ReadingLoader label={phaseStatus} />}
+              {phase === "GENERATING" && readingMode === "DEEP" && modelTier === "CLOUD" && (
+                <button type="button" onClick={resetReadingFlow}>{locale === "th" ? "ยกเลิกการอ่านไพ่" : "Cancel reading"}</button>
+              )}
             </div>
           )}
 

@@ -1,0 +1,57 @@
+# Opt-in rollout: docker compose -f docker-compose.yml -f docker-compose.jobs.yml up -d --build
+# Required values are supplied by deployment configuration, never embedded in messages.
+services:
+  api:
+    environment:
+      ReadingJobs__Enabled: "true"
+      ReadingJobs__BrokerUri: amqp://tarot:${RABBITMQ_PASSWORD:?required}@rabbitmq:5672
+      ReadingJobs__WorkerKey: ${READING_WORKER_KEY:?required}
+      ReadingJobs__ProviderRef: cloud-default
+      ReadingJobs__Model: ${TAROT_LLM_CLOUD_MODEL:?required}
+      ReadingJobs__MaxConcurrency: ${CLOUD_MAX_CONCURRENCY:-4}
+      ReadingJobs__RequestsPerMinute: ${CLOUD_REQUESTS_PER_MINUTE:-20}
+      ReadingJobs__TokensPerMinute: ${CLOUD_TOKENS_PER_MINUTE:-200000}
+      LLM__Tiers__2__Workers__0__ApiKey: ""
+      # Queued requests are the only interactive DEEP path during this rollout.
+      StartupCacheWarmup__Enabled: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+  rabbitmq:
+    image: rabbitmq:4.1-alpine
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      RABBITMQ_DEFAULT_USER: tarot
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?required}
+    volumes:
+      - rabbitmq_jobs:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 20s
+    networks: [backend, egress]
+    environment:
+      BROKER_URI: amqp://tarot:${RABBITMQ_PASSWORD:?required}@rabbitmq:5672
+      API_URL: http://api:5000
+      WORKER_KEY: ${READING_WORKER_KEY:?required}
+      PROVIDER_REF: cloud-default
+      PROVIDER_URL: ${TAROT_LLM_CLOUD_ENDPOINT:?required}
+      PROVIDER_KEY: ${TAROT_LLM_CLOUD_API_KEY:?required}
+      PROVIDER_MODEL: ${TAROT_LLM_CLOUD_MODEL:?required}
+      PROVIDER_IDEMPOTENCY_HEADER: ${PROVIDER_IDEMPOTENCY_HEADER:-}
+      PREFETCH: "4"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+volumes:
+  rabbitmq_jobs:

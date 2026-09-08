@@ -2800,3 +2800,83 @@ Complete card handling inside the 3D consultation room. The player taps the deck
 - [x] Verify type checking, production build/asset budgets, canvas mouse/touch readings, keyboard/retry behavior, mobile visuals, and existing public/shop regressions (23 Playwright tests passed).
 
 No new HTTP endpoint or wire schema is introduced. The direct accessible reading path remains available.
+
+# Next Task — Queued Cloud LLM Workers with C# SSE and Cancellation
+
+Status: **Implemented and verified — 2026-09-08**
+
+## Outcome and Agreed Architecture
+
+Move cloud LLM execution into a separate Node.js + TypeScript + NestJS worker service using Fastify for HTTP endpoints. C# remains the core business API and the only application service contacted by the browser. Workers scale independently through RabbitMQ. STANDARD readings remain in C# without an LLM call.
+
+```text
+Browser -> C# validates request, reserves access, saves job + outbox
+                      -> RabbitMQ request queue
+                      -> NestJS worker -> Cloud LLM
+                      -> RabbitMQ result queue
+                      -> C# validates and persists result
+Browser <- C# SSE progress and completed reading
+```
+
+The first version streams job progress and the completed, validated reading over SSE. Token-by-token LLM streaming is outside this task. This task supersedes earlier synchronous cloud-LLM execution plans where they conflict; retain existing reading safety, privacy, and entitlement rules.
+
+## Priority 0 — Contracts and Durable Job Lifecycle
+
+- [x] Inspect existing reading generation, entitlement/credit handling, LLM validation, and frontend flow before selecting integration points. Preserve STANDARD behavior and migrate both 2D and 3D DEEP clients together.
+- [x] Define versioned request, result, failure, and cancellation message schemas shared across C# and TypeScript. Include job ID, attempt ID, correlation ID, deadline, provider/model configuration reference, and only necessary reading data. Never put provider credentials in messages.
+- [x] Persist a job state machine such as `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, and `CANCELED`, with atomic transitions, timestamps, execution lease, and attempt fencing. Terminal states must not be overwritten by stale deliveries.
+- [x] Keep authentication, ownership, entitlements, credit reservation/settlement, prompt policy, authoritative card data, output validation, and result persistence in C#. Workers own provider transport, bounded execution, and operational retry handling.
+- [x] Save accepted jobs and request outbox records in one database transaction. Publish with broker confirmation and recover after publisher or broker restarts.
+- [x] Make request submission, message consumption, result commits, and credit settlement idempotent. Duplicate delivery or browser retries must not create duplicate jobs or consume credits twice.
+- [x] Specify credit settlement for queued cancellation, running cancellation, provider failure, validation failure, and successful completion before implementing it. C# owns the policy; releasing a user credit does not imply the provider refunded its charge.
+
+## Priority 1 — NestJS Worker and RabbitMQ
+
+- [x] Add an independently deployable Node.js/TypeScript/NestJS worker with Fastify health/readiness endpoints, graceful shutdown, and validated configuration using documented example values only.
+- [x] Configure durable request/result queues, publisher confirms, manual acknowledgements, bounded prefetch, bounded retries with backoff/jitter, and dead-letter handling. Keep the broker and worker private.
+- [x] Check C#-owned cancellation/deadline state and atomically claim an execution attempt immediately before calling the cloud LLM. Fail safely when authorization to execute cannot be established.
+- [x] Abort provider HTTP requests on cancellation, deadline expiry, or execution lease loss. Never start a retry for a canceled or expired job.
+- [x] Deliver results durably before acknowledging completed work. Separate result-delivery retries from provider-call retries so a C# outage does not trigger fresh generations. Define recovery for crashes before/after provider completion and use provider idempotency when supported; document that duplicate provider charges cannot always be prevented.
+- [x] Enforce shared provider/account concurrency and request/token quotas across worker replicas, with timeouts, admission limits, and bounded queue age. Handle rate-limit responses without a retry storm.
+- [x] Scale workers using oldest eligible job age, queue depth, active requests, and available provider quota. Adding replicas must not multiply the permitted provider rate.
+
+## Priority 1 — C# API, Result Processing, and SSE
+
+- [x] Add authenticated/owner-scoped job creation (`202 Accepted` with job ID), status, SSE subscription, heartbeat, and explicit cancellation contracts as needed. Support the existing session model for eligible users without exposing jobs through guessable IDs alone.
+- [x] Consume worker results in C#, validate the structured reading and authoritative cards, and atomically persist completion and settle credits before publishing completion notifications. Discard results from canceled jobs or obsolete attempts.
+- [x] Provide ordered event IDs, reconnect/replay or persisted status reconciliation, keepalives, and localized progress/error handling. Configure reverse proxy buffering and idle timeouts for SSE.
+- [x] Route notifications across C# replicas so the instance holding the browser connection receives updates. Durable job status must recover completion even if a transient notification is lost.
+- [x] Preserve completed readings when the browser leaves. Reconnection may retrieve an authorized persisted result without generating again.
+- [x] Generate OpenAPI for every new HTTP API, keep request/response schemas aligned, and document SSE event payloads and cancellation semantics. Verify generated JSON and interactive Swagger in Development; keep interactive documentation disabled in Production unless explicitly secured.
+
+## Priority 1 — Cancel Unfinished Work When the User Leaves
+
+Agreed behavior: closing/leaving the browser cancels unfinished work after a short reconnect grace period. A disconnected browser must not leave an expensive queued job running indefinitely.
+
+- [x] Track job-scoped browser presence with SSE connection tracking and an expiring heartbeat lease shared across C# replicas. Do not rely on browser unload notifications; they are best effort only.
+- [x] Use a configurable 15-second reconnect grace period by default. Define heartbeat cadence and detection timing explicitly, including initial subscription timeout after job creation. Do not treat a merely hidden/background tab as an explicit cancellation.
+- [x] Restore presence when the same authorized job reconnects within the grace period. Account for multiple authorized subscribers so closing one connection does not cancel work another active subscriber is viewing.
+- [x] After the last presence lease and grace period expire, atomically mark an unfinished job canceled. Persist cancellation even when no API process retains the original connection; run restart-safe expiry processing.
+- [x] For queued jobs, workers acknowledge and skip canceled messages without calling the provider. Physical removal of an individual broker message is not required.
+- [x] For running jobs, propagate cancellation promptly to the active worker and abort the provider request where supported. Retain lease/state checks so a lost cancellation signal cannot allow a late result to complete the job.
+- [x] Explicit Cancel cancels immediately without the reconnect grace period. Frontend restart cancels the previous unfinished job before creating another; internal 2D/3D view transitions preserve the same active job.
+- [x] Resolve completion-versus-cancellation races using atomic terminal transitions: a committed completion stays saved; a committed cancellation rejects late results. Never promise that aborting an HTTP request stops provider computation or eliminates its charges.
+
+## Priority 2 — Deployment, Observability, and Verification
+
+- [x] Add worker and RabbitMQ deployment configuration, health checks, graceful draining, example configuration keys, migrations, and a local run guide. Never read, log, display, or copy secret-bearing environment file values.
+- [x] Record queue age, active jobs, provider latency, throttling, retries, dead letters, cancellation latency, discarded late results, and token/cost usage where available. Correlate by job/attempt ID without logging questions, readings, credentials, or sensitive account data.
+- [x] Test C# producer/TypeScript consumer contracts and the reverse result path, successful DEEP completion, unchanged STANDARD behavior, unauthorized job access, credit settlement, duplicate requests/deliveries, and schema/output rejection.
+- [x] Test queued disconnect cancellation with zero provider calls, running request abort, explicit cancellation, initial subscription failure, reconnect inside/outside the grace period, multiple subscribers, and completion/cancellation races.
+- [x] Test worker/API/broker restarts, outbox recovery, result delivery failure without unnecessary regeneration, stale attempts, deadline expiry, quota enforcement across replicas, and bounded retry/dead-letter behavior.
+- [x] Verify SSE reconnect and result delivery across multiple C# replicas, browser-close behavior, and complete Thai/English 2D/3D reading flows. Confirm terminal status recovery after missed notifications.
+- [x] Run relevant API/frontend regression tests, validate Development Swagger UI and OpenAPI JSON, and verify Production documentation exposure rules.
+
+## Definition of Done
+
+- [x] C# accepts and owns DEEP jobs; separate NestJS workers execute cloud LLM calls through RabbitMQ; C# validates/persists results and delivers them through SSE.
+- [x] Worker replicas scale independently within shared provider limits, and retry/recovery paths preserve job and credit correctness.
+- [x] Leaving the browser cancels unfinished work after the configured reconnect window; canceled queued jobs never start provider calls, and running jobs receive best-effort abort with late results rejected.
+- [x] The architecture, cancellation policy, contracts, deployment steps, and verification results are saved in the repository for the next session.
+
+Implementation and operational details: [QUEUED_DEEP.md](QUEUED_DEEP.md). Verification: 126 API tests, 6 worker tests, 46 browser tests, frontend production build, real RabbitMQ/PostgreSQL multi-replica recovery harness, Development/Production Swagger checks, and Compose example configuration validation. Deployment is opt-in through docker-compose.jobs.yml. Unknown provider outcomes fail and release the user credit rather than automatically generating again; optional provider idempotency headers are supported. No paid cloud calls or production deployment were performed.

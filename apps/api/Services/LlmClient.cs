@@ -315,7 +315,7 @@ public sealed class LlmClient(
             }
         };
 
-    private static string BuildSystemPrompt(
+    internal static string BuildSystemPrompt(
         InterpretationPayload payload,
         PromptVariantSelection promptVariant)
     {
@@ -392,7 +392,7 @@ public sealed class LlmClient(
             : $"{basePrompt}\n\n{promptVariant.AdditionalSystemInstruction}";
     }
 
-    private static object BuildReadingResponseFormat(InterpretationPayload payload) => new
+    internal static object BuildReadingResponseFormat(InterpretationPayload payload) => new
     {
         type = "json_schema",
         json_schema = new
@@ -464,7 +464,7 @@ public sealed class LlmClient(
         maxLength
     };
 
-    private static TarotReadingResponse ParseOpenAiCompatibleResponse(
+    internal static TarotReadingResponse ParseOpenAiCompatibleResponse(
         string body,
         ClassificationResult classification,
         InterpretationPayload payload,

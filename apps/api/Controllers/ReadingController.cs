@@ -32,7 +32,9 @@ public sealed class ReadingController : MasterController
     [ProducesResponseType(typeof(ResponseDto<ReadingOptionsDto, object>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetOptions(CancellationToken cancellationToken)
     {
+        var jobs = HttpContext.RequestServices.GetRequiredService<IOptions<ReadingJobOptions>>().Value;
         var deep = _accessPolicy.Evaluate(User);
+        if (jobs.Enabled && !jobs.AllowCloudForRequestsWithRawQuestion) deep = deep with { Enabled = false };
         var rewardStatus = await _rewards.GetStatusAsync(User, RewardedDeepCookie.Read(Request), cancellationToken);
         deep = deep with
         {
@@ -42,7 +44,7 @@ public sealed class ReadingController : MasterController
         return SuccessResponse(new ReadingOptionsDto(
             [ReadingMode.STANDARD, ReadingMode.DEEP],
             deep,
-            (_llmOptions.Tiers ?? [])
+            jobs.Enabled ? [new ReadingModelTierDto("CLOUD", jobs.Model, true)] : (_llmOptions.Tiers ?? [])
                 .Select(tier => new ReadingModelTierDto(
                     tier.Id,
                     tier.Model,
@@ -62,6 +64,8 @@ public sealed class ReadingController : MasterController
         DeepCreditReservation? rewardReservation = null;
         if (request.ReadingMode == ReadingMode.DEEP)
         {
+            if (HttpContext.RequestServices.GetRequiredService<IOptions<ReadingJobOptions>>().Value.Enabled)
+                throw new ReadingJobException(409, "USE_READING_JOBS");
             var access = _accessPolicy.Evaluate(User);
             if (!access.Entitled)
             {

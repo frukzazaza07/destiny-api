@@ -1,0 +1,11 @@
+{
+  "name": "tarot-cloud-worker", "version": "1.0.0", "private": true,
+  "scripts": { "build": "tsc", "start": "node dist/main.js", "test": "npm run build && node --test dist/*.test.js" },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0", "@nestjs/core": "^11.1.0", "@nestjs/platform-fastify": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0", "@fastify/static": "^10.1.2", "amqplib": "^0.10.9",
+    "reflect-metadata": "^0.2.2", "rxjs": "^7.8.2", "zod": "^4.1.0"
+  },
+  "devDependencies": { "@types/amqplib": "^0.10.7", "@types/node": "^24.0.0", "typescript": "^5.9.0" },
+  "overrides": { "fastify": "5.12.1" }
+}

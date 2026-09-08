@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api-client";
+import { ReadingJobClient } from "../lib/reading-job-client";
 import type { Locale } from "../lib/i18n";
 import type { RewardedDeepStatus } from "./rewarded-deep-unlock";
 
@@ -167,6 +168,7 @@ export function useTarotReadingFlow({
   const [error, setError] = useState<string | null>(null);
   const flowVersion = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
+  const jobClient = useRef(new ReadingJobClient());
 
   const selectLimit = shuffle?.selectCount ?? (spread === "DAILY_1" ? 1 : 3);
   const selectedTopic = tarotTopics.find((item) => item.id === topic) ?? tarotTopics[0];
@@ -188,6 +190,7 @@ export function useTarotReadingFlow({
   }, []);
 
   const resetReadingFlow = useCallback(() => {
+    jobClient.current.cancel();
     cancelActiveFlow();
     setShuffle(null);
     setSelected([]);
@@ -285,7 +288,13 @@ export function useTarotReadingFlow({
   ) => {
     setPhase("GENERATING");
     try {
-      const generatedPromise = apiFetch("/api/readings/generate", {
+      const request = {
+        question: composedQuestion, spread: currentShuffle.spread, locale, readingMode,
+        modelTier: readingMode === "DEEP" ? modelTier : null, cards: resolvedCards,
+      };
+      const generatedPromise = readingMode === "DEEP" && modelTier === "CLOUD"
+        ? jobClient.current.generate<ReadingResponse>(request, controller.signal, messages.readingError)
+        : apiFetch("/api/readings/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -297,17 +306,23 @@ export function useTarotReadingFlow({
           cards: resolvedCards,
         }),
         signal: controller.signal,
+      }).then(async generated => {
+        if (!generated.ok) throw new Error(await readApiError(generated, messages.readingError));
+        return readApiData<ReadingResponse>(generated);
       });
       const [generated] = await Promise.all([
         generatedPromise,
         waitFor(reduceMotion ? 0 : 300, controller.signal),
       ]);
-      if (!generated.ok) throw new Error(await readApiError(generated, messages.readingError));
-      const nextReading = await readApiData<ReadingResponse>(generated);
+      const nextReading = generated;
       if (!isCurrent(version)) return;
       activeRequest.current = null;
       setReading(nextReading);
-      if (readingMode === "DEEP" && !deepAccess.premiumExpiresAt && deepAccess.availableAdEarnedCredits > 0) {
+      if (readingMode === "DEEP" && modelTier === "CLOUD") {
+        void apiFetch("/api/readings/options", { cache: "no-store" })
+          .then(response => readApiData<ReadingOptions>(response))
+          .then(options => { if (isCurrent(version)) setDeepAccess(options.deepReading); }).catch(() => {});
+      } else if (readingMode === "DEEP" && !deepAccess.premiumExpiresAt && deepAccess.availableAdEarnedCredits > 0) {
         const remaining = deepAccess.availableAdEarnedCredits - 1;
         setDeepAccess((current) => ({ ...current, availableAdEarnedCredits: remaining, entitled: remaining > 0 }));
       }
