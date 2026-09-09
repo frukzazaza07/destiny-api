@@ -21,6 +21,7 @@ public sealed class TarotDbContext(DbContextOptions<TarotDbContext> options) : D
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        PromptCopyDataConfiguration.Configure(modelBuilder);
         ReadingJobDataConfiguration.Configure(modelBuilder);
         AccountDataConfiguration.Configure(modelBuilder);
         RewardedDeepDataConfiguration.Configure(modelBuilder);

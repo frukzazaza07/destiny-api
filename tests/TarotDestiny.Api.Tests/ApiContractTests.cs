@@ -98,6 +98,14 @@ public sealed class ApiContractTests
         Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/premium", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/admin/users/{userId}/entitlements", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/rewards/deep/status", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/readings/{id}/prompt/status", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/readings/{id}/prompt/sessions", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/readings/{id}/prompt/attempts", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/readings/{id}/prompt/copy", out _));
+        Assert.IsTrue(paths.TryGetProperty("/api/rewards/prompt/provider-completions", out _));
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.IsFalse(schemas.GetProperty("TarotReadingResponse").GetProperty("properties").TryGetProperty("promptSnapshot", out _));
+        Assert.IsTrue(schemas.GetProperty("PromptCopyStatusDto").GetProperty("properties").TryGetProperty("requiredAds", out _));
         Assert.IsTrue(paths.TryGetProperty("/api/reading-jobs", out _));
         Assert.IsTrue(paths.GetProperty("/api/reading-jobs/{id}/events").GetProperty("get").GetProperty("responses")
             .GetProperty("200").GetProperty("content").TryGetProperty("text/event-stream", out _));
@@ -121,6 +129,8 @@ public sealed class ApiContractTests
 
         using var response = await client.GetAsync("/swagger/v1/swagger.json");
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        using var ui = await client.GetAsync("/swagger/index.html");
+        Assert.AreEqual(HttpStatusCode.NotFound, ui.StatusCode);
     }
 
     [TestMethod]

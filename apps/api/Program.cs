@@ -291,6 +291,11 @@ else
 }
 var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? builder.Configuration["Postgres:ConnectionString"];
+builder.Services.AddOptions<PromptCopyOptions>().Bind(builder.Configuration.GetSection("PromptCopy"))
+    .Validate(o => o.RequiredAds is >= 1 and <= 100, "PromptCopy RequiredAds must be between 1 and 100.")
+    .Validate(o => !o.Enabled || System.Text.Encoding.UTF8.GetByteCount(o.CallbackSigningKey) >= 32,
+        "PromptCopy requires a provider callback signing key of at least 32 bytes.")
+    .ValidateOnStart();
 if (string.IsNullOrWhiteSpace(postgresConnectionString))
 {
     builder.Services.AddSingleton<IGeneratedAnswerStore, NullGeneratedAnswerStore>();
@@ -307,6 +312,7 @@ else
     builder.Services.AddScoped<IAccountService, AccountService>();
     builder.Services.AddScoped<IRewardedDeepService, RewardedDeepService>();
     builder.Services.AddScoped<ReadingJobService>();
+    builder.Services.AddScoped<PromptCopyService>();
 }
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IPasswordHasher<UserAccountEntity>, PasswordHasher<UserAccountEntity>>();

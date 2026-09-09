@@ -5,6 +5,7 @@ import { BookOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Locale } from "../lib/i18n";
 import RewardedDeepUnlock from "./rewarded-deep-unlock";
+import PromptCopyUnlock from "./prompt-copy-unlock";
 import {
   tarotTopics,
   type ReadingMode,
@@ -498,6 +499,7 @@ export default function ReadingClient({
               <div className="reveal-section reveal-section-3">
                 <blockquote>{reading.reflectionQuestion}</blockquote>
                 <p className="closing">{reading.closingMessage}</p>
+                <PromptCopyUnlock key={reading.promptReadingId ?? "unavailable"} locale={locale} readingId={reading.promptReadingId} />
               </div>
 
               {isDev && (

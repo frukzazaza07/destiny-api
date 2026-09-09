@@ -84,6 +84,18 @@ public sealed class ReadingController : MasterController
         try
         {
             var response = await _readingService.GenerateAsync(request, cancellationToken);
+            var promptCopy = HttpContext.RequestServices.GetService<PromptCopyService>();
+            if (promptCopy is not null)
+            {
+                var payload = HttpContext.RequestServices.GetRequiredService<IInterpretationEngine>().Build(request, response.Classification);
+                var variant = new InferenceRouter(Options.Create(_llmOptions)).Resolve(request, response.Classification).PromptVariant;
+                var snapshot = response.CacheStatus != CacheStatus.HIT && response.PromptSnapshot is { } actual
+                    ? actual : ReadingPromptBuilder.Build(request, payload, variant);
+                var id = Guid.NewGuid();
+                promptCopy.Snapshot(id, PromptReadingCookie.EnsureOwner(HttpContext), snapshot, true);
+                await HttpContext.RequestServices.GetRequiredService<TarotDestiny.Api.Data.TarotDbContext>().SaveChangesAsync(cancellationToken);
+                response = response with { PromptReadingId = id };
+            }
             if (rewardReservation is not null)
                 await _rewards.FinalizeCreditAsync(rewardReservation, cancellationToken);
             return SuccessResponse(response);

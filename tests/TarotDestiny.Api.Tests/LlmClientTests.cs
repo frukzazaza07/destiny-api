@@ -62,7 +62,11 @@ public sealed class LlmClientTests
         var userContent = sentRequest.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
         using var userInput = JsonDocument.Parse(userContent!);
         var properties = userInput.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
-        CollectionAssert.AreEqual(new[] { "question", "cards" }, properties);
+        CollectionAssert.AreEqual(new[] { "question", "locale", "spread", "cards", "interpretationContext" }, properties);
+        Assert.AreEqual(request.Locale, userInput.RootElement.GetProperty("locale").GetString());
+        Assert.AreEqual(request.Spread, userInput.RootElement.GetProperty("spread").GetString());
+        Assert.IsNotNull(response.PromptSnapshot);
+        Assert.AreEqual(userContent, response.PromptSnapshot.Messages[1].Content);
         Assert.AreEqual(request.Question, userInput.RootElement.GetProperty("question").GetString());
         var sentCards = userInput.RootElement.GetProperty("cards");
         Assert.AreEqual(request.Cards.Count, sentCards.GetArrayLength());

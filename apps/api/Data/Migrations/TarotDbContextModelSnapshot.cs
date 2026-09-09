@@ -337,6 +337,73 @@ namespace TarotDestiny.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TarotDestiny.Api.Data.PromptAdAttemptEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Closed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderEventId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ReadingId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderEventId")
+                        .IsUnique();
+
+                    b.HasIndex("ReadingId");
+
+                    b.ToTable("prompt_ad_attempts", (string)null);
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.PromptReadingEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CompletedAds")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProtectedSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RequiredAds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Owner");
+
+                    b.ToTable("prompt_readings", (string)null);
+                });
+
             modelBuilder.Entity("TarotDestiny.Api.Data.ProviderAdmissionEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1027,6 +1094,15 @@ namespace TarotDestiny.Api.Data.Migrations
                         .HasConstraintName("fk_tarot_generated_answer_variant_answer");
 
                     b.Navigation("GeneratedAnswer");
+                });
+
+            modelBuilder.Entity("TarotDestiny.Api.Data.PromptAdAttemptEntity", b =>
+                {
+                    b.HasOne("TarotDestiny.Api.Data.PromptReadingEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ReadingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TarotDestiny.Api.Data.ReadingPresenceEntity", b =>

@@ -19,7 +19,8 @@ public sealed class ReadingJobException(int status, string code) : Exception(cod
 
 public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService rewards,
     IDeepReadingAccessPolicy access, IInterpretationEngine engine, IReadingResponseValidator validator,
-    IOptions<ReadingJobOptions> options, TimeProvider clock)
+    IOptions<ReadingJobOptions> options, TimeProvider clock,
+    PromptCopyService? promptCopy = null, IOptions<LlmOptions>? llmOptions = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     { Converters = { new JsonStringEnumConverter() } };
@@ -85,6 +86,13 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
             credit.ReservationExpiresAt = DateTimeOffset.MaxValue;
         }
         db.Add(job);
+        if (promptCopy is not null)
+        {
+            var variant = llmOptions is null ? PromptVariantSelection.Control :
+                new InferenceRouter(llmOptions).Resolve(input.Reading with { ModelTier = null }, Classification).PromptVariant;
+            promptCopy.Snapshot(job.Id, owner, ReadingPromptBuilder.Build(input.Reading,
+                engine.Build(input.Reading, Classification), variant), false);
+        }
         Enqueue(job, "REQUEST", "tarot.requests.v1");
         return ToDto(job);
     }, ct);
@@ -144,13 +152,13 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         if (request.Question is not null && !settings.AllowCloudForRequestsWithRawQuestion)
         { await Finish(job, "FAILED", "CLOUD_QUESTION_POLICY_DISABLED", ct); return new WorkerClaimDto("SKIP"); }
         var payload = engine.Build(request, Classification);
+        var savedPrompt = await db.Set<PromptReadingEntity>().SingleOrDefaultAsync(x => x.Id == job.Id, ct);
+        var snapshot = savedPrompt is not null && promptCopy is not null ? promptCopy.ReadSnapshot(savedPrompt)
+            : ReadingPromptBuilder.Build(request, payload, PromptVariantSelection.Control);
         var prompt = JsonSerializer.SerializeToElement(new {
             max_tokens = settings.MaxOutputTokens, temperature = 0.3,
             response_format = LlmClient.BuildReadingResponseFormat(payload),
-            messages = new[] {
-                new { role = "system", content = LlmClient.BuildSystemPrompt(payload, PromptVariantSelection.Control) },
-                new { role = "user", content = JsonSerializer.Serialize(new { question = request.Question, cards = request.Cards }, Json) }
-            }
+            messages = snapshot.Messages
         }, Json);
         // UTF-8 bytes upper-bound input tokens, so this conservative reservation cannot overspend the budget.
         var tokens = Encoding.UTF8.GetByteCount(prompt.GetRawText()) + settings.MaxOutputTokens;
@@ -196,7 +204,10 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
             QueuedOutputSchema.Validate(result.Body, payload);
             var response = LlmClient.ParseOpenAiCompatibleResponse(result.Body, Classification, payload, settings.Model);
             validator.Validate(request, response);
-            job.ResultJson = JsonSerializer.Serialize(response with { CacheStatus = CacheStatus.SKIPPED }, Json);
+            var savedPrompt = await db.Set<PromptReadingEntity>().SingleOrDefaultAsync(x => x.Id == job.Id, ct);
+            if (savedPrompt is not null) savedPrompt.Completed = true;
+            job.ResultJson = JsonSerializer.Serialize(response with { CacheStatus = CacheStatus.SKIPPED,
+                PromptReadingId = savedPrompt?.Id }, Json);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or NullReferenceException or IndexOutOfRangeException)
         { await Finish(job, "FAILED", "INVALID_OUTPUT", ct); return true; }

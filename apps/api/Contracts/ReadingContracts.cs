@@ -61,7 +61,12 @@ public sealed record TarotReadingResponse(
     string? InferenceWorker = null,
     string? InferenceProvider = null,
     string? PromptVariant = null,
-    double? QualityScore = null);
+    double? QualityScore = null,
+    Guid? PromptReadingId = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public TarotDestiny.Api.Services.ReadingPromptSnapshot? PromptSnapshot { get; init; }
+}
 
 public sealed record CardReading(
     string Position,

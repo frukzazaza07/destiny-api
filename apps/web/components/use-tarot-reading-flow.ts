@@ -38,6 +38,7 @@ export type ShuffleResponse = {
 };
 
 export type ReadingResponse = {
+  promptReadingId?: string | null;
   title: string;
   summary: string;
   mainTheme: string;
@@ -170,6 +171,20 @@ export function useTarotReadingFlow({
   const activeRequest = useRef<AbortController | null>(null);
   const jobClient = useRef(new ReadingJobClient());
 
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`tarot-reading:${locale}`);
+      if (saved) {
+        const value = JSON.parse(saved);
+        if (value.reading?.promptReadingId && Array.isArray(value.reading.cards)) {
+          setReading(value.reading); setCards(value.reading.cards);
+          setSpread(value.spread); setQuestion(value.question); setQuestionMode(value.questionMode);
+          setTopic(value.topic); setReadingMode(value.reading.readingMode); setPhase("COMPLETE");
+        }
+      }
+    } catch { /* Browser storage is optional. */ }
+  }, [locale]);
+
   const selectLimit = shuffle?.selectCount ?? (spread === "DAILY_1" ? 1 : 3);
   const selectedTopic = tarotTopics.find((item) => item.id === topic) ?? tarotTopics[0];
   const composedQuestion = questionMode === "TOPIC"
@@ -190,6 +205,7 @@ export function useTarotReadingFlow({
   }, []);
 
   const resetReadingFlow = useCallback(() => {
+    try { sessionStorage.removeItem(`tarot-reading:${locale}`); } catch { /* Storage may be disabled. */ }
     jobClient.current.cancel();
     cancelActiveFlow();
     setShuffle(null);
@@ -200,7 +216,7 @@ export function useTarotReadingFlow({
     setShuffleVisualStep("MIXING");
     setFailureStep(null);
     setError(null);
-  }, [cancelActiveFlow]);
+  }, [cancelActiveFlow, locale]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -318,6 +334,10 @@ export function useTarotReadingFlow({
       if (!isCurrent(version)) return;
       activeRequest.current = null;
       setReading(nextReading);
+      try {
+        sessionStorage.setItem(`tarot-reading:${locale}`, JSON.stringify({ reading: nextReading,
+          spread: currentShuffle.spread, question, questionMode, topic }));
+      } catch { /* Reading can still be copied without browser persistence. */ }
       if (readingMode === "DEEP" && modelTier === "CLOUD") {
         void apiFetch("/api/readings/options", { cache: "no-store" })
           .then(response => readApiData<ReadingOptions>(response))
@@ -335,7 +355,7 @@ export function useTarotReadingFlow({
       setError(getRequestError(cause, messages.readingError, messages.unavailableError));
       setPhase("ERROR");
     }
-  }, [composedQuestion, deepAccess.availableAdEarnedCredits, deepAccess.premiumExpiresAt, isCurrent, locale, messages, modelTier, readingMode, reduceMotion]);
+  }, [composedQuestion, deepAccess.availableAdEarnedCredits, deepAccess.premiumExpiresAt, isCurrent, locale, messages, modelTier, readingMode, reduceMotion, question, questionMode, topic]);
 
   const startShuffle = useCallback(async () => {
     if (activeRequest.current || controlsLocked) return;

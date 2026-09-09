@@ -45,7 +45,7 @@ type GooglePubAds = {
   removeEventListener: (name: string, listener: (event: GoogleEvent) => void) => void;
 };
 
-const copy = {
+export const rewardedAdCopy = {
   en: {
     label: "Optional rewarded advertising",
     title: (ads: number, credits: number) => `Watch ${ads} optional rewarded ${ads === 1 ? "ad" : "ads"} to unlock ${credits === 1 ? "one" : credits} DEEP ${credits === 1 ? "reading" : "readings"}.`,
@@ -94,7 +94,7 @@ export default function RewardedDeepUnlock({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const activeAttempt = useRef(false);
-  const text = copy[locale];
+  const text = rewardedAdCopy[locale];
 
   const publish = useCallback((next: RewardedDeepStatus) => {
     setStatus(next);

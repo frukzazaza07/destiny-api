@@ -1,5 +1,43 @@
 # TASK.md — Tarot LLM Classification + Finished Answer Cache
 
+# Next Task — Copy a Tarot Prompt to Another AI
+
+Status: **In progress — 2026-09-09. Core API and UI implemented; live provider verification integration pending.**
+
+Implementation, configuration, and the remaining provider dependency: [PROMPT_COPY.md](PROMPT_COPY.md).
+
+## Outcome
+
+Let a logged-in user unlock and copy a ready-to-paste Tarot prompt for another LLM after completing **n rewarded ads**, with **n defaulting to 2**.
+
+## Requirements
+
+- [ ] Add a button to the reading result in both the 2D and 3D flows using the existing localization system:
+  - Thai: **คัดลอก prompt ถึงหมอดู AI อื่น**
+  - English: **Copy prompt for another AI fortune teller**
+- [ ] Require login before starting the unlock flow or obtaining the prompt. Preserve the current reading through login.
+- [ ] Configure the required ad count on the server, defaulting to **2**. Display the actual requirement and completed/required progress in Thai and English. Snapshot the requirement when an unlock session starts.
+- [ ] Require provider-confirmed rewarded-ad completions before releasing the prompt. Count each completion once; skipped, closed, failed, or unavailable ads do not count. Enforce login, reading ownership, and unlock eligibility on the server.
+- [ ] Keep this prompt-copy unlock separate from DEEP reading credits and premium access. Login and the configured ad requirement apply to this feature; existing DEEP rewards must not be consumed or granted by copying.
+- [ ] Bind unlock progress to the authenticated user and reading, recover it after refresh, and allow copying the same unlocked prompt again without repeating ads. A new reading requires its own unlock.
+- [ ] Copy the real reading prompt assembled for the LLM, including the admin-configured system role/instructions and the complete user/reading context. Reuse the production prompt builder and applicable prompt version rather than creating a separate generic export template. Include the question or selected topic, locale, spread, authoritative cards in their positions and orientations, and interpretation context supplied to the LLM. Exclude credentials and unrelated account data.
+- [ ] Serialize the system and user messages into one ready-to-paste text prompt with clearly labeled sections, preserving their order and content. The system section must contain the actual admin-configured role/instructions, not merely the word `system` or an admin role label.
+- [ ] Adapt only the response-format instructions for export: replace JSON/schema/structured-output requirements with a request for a simple, readable plain-text Tarot response in the selected language. Preserve the reading guidance and safety instructions. Remove conflicting JSON-only instructions and output-schema examples from the exported prompt; the application's normal LLM response contract remains unchanged.
+- [ ] For a reading that did not call the LLM (such as STANDARD or a cache hit), assemble the equivalent real prompt through the same production prompt builder without starting an LLM generation or consuming a DEEP credit. For a generated reading, use its applicable prompt/configuration version so later admin edits do not silently change the copied context.
+- [ ] Copy the unlocked prompt to the clipboard, with localized success/error feedback and a selectable-text fallback when clipboard access fails. The user pastes it into their chosen LLM; this feature does not send it to an external provider automatically.
+- [ ] Reuse the existing voluntary rewarded-ad and consent flow, including progress, cancellation, no-fill, and retry states.
+- [ ] For any new or changed HTTP API, keep generated OpenAPI schemas aligned and verify Swagger UI and OpenAPI JSON in Development. Keep interactive documentation disabled in Production unless explicitly secured.
+
+## Acceptance Criteria
+
+- [ ] Logged-out users must sign in; direct API requests cannot bypass authentication or the ad requirement.
+- [ ] With default settings, one completed ad does not unlock copying; two verified completions do. A configured value of n requires exactly n verified completions.
+- [ ] Duplicate completion callbacks, refreshes, and repeated copy attempts do not duplicate rewards or require more ads for the same unlocked reading.
+- [ ] Thai and English button labels, requirement/progress text, and clipboard feedback work in both reading interfaces.
+- [ ] The copied prompt includes the actual admin-configured system role/instructions and full reading context from the production prompt builder, preserving question, spread, card order, and orientations.
+- [ ] Export verification compares the copied prompt with the real LLM messages: differences are limited to message-section formatting and the intended plain-text response adaptation. No conflicting JSON/schema response requirement remains.
+- [ ] The prompt requests a simple plain-text answer in Thai or English according to the reading locale and can be pasted into another LLM without additional reading context. STANDARD and cached readings can export without a new LLM call; normal in-app structured responses still work.
+
 ## Objective
 
 Implement a caching architecture that reduces LLM GPU usage by reusing a previously generated Tarot reading when:
