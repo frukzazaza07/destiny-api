@@ -2772,3 +2772,15 @@ button.account-nav {
     display: none;
   }
 }
+/* One consultation component remains mounted across shop and accessible views. */
+.astrology-consultation { max-width: 52rem; margin: 1.5rem auto; padding: 1.5rem; border: 1px solid #aa8c59; border-radius: 1rem; background: #171e24; color: #f3e9d8; }
+.astrology-accessible { grid-column: 1 / -1; position: relative; z-index: 2; min-width: 0; }
+.astrology-consultation fieldset { display: grid; gap: 1rem; border: 0; padding: 0; }
+.astrology-consultation label { display: grid; gap: .4rem; }
+.astrology-consultation input, .astrology-consultation textarea { width: 100%; min-height: 44px; padding: .65rem; border: 1px solid #aa8c59; border-radius: .4rem; background: #fffaf1; color: #20252a; color-scheme: light; }
+.astrology-consultation textarea { min-height: 6rem; }
+.astrology-consultation button { min-height: 44px; padding: .6rem 1rem; }
+.astrology-consultation p { white-space: pre-wrap; line-height: 1.65; }
+.astrology-consultation :focus-visible { outline: 3px solid #e2bc70; outline-offset: 3px; }
+.astrology-panel { position: fixed; z-index: 1001; right: 1rem; top: 5rem; bottom: 1rem; width: min(42rem, 48vw); overflow: auto; background: #171e24; border-radius: 1rem; padding: .6rem; }
+@media (max-width: 700px) { .astrology-panel { width: auto; left: .5rem; right: .5rem; top: 35%; bottom: .5rem; } .astrology-consultation { padding: 1rem; } }

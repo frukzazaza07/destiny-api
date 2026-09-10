@@ -1,10 +1,11 @@
 import { apiFetch, apiMutation, apiUrl, readApiData, type ApiEnvelope } from './api-client';
 
-type Job<T> = { jobId: string; state: string; eventId: number; deadline: string; reading: T | null; errorCode: string | null };
+type Job<T> = { jobId: string; state: string; eventId: number; deadline: string; reading: T | null; astrologyReading?: T | null; errorCode: string | null };
 const terminal = (state: string) => ['COMPLETED', 'FAILED', 'CANCELED'].includes(state);
 
 /** One client per shared 2D/3D flow. Unmount closes presence; an explicit reset cancels immediately. */
 export class ReadingJobClient {
+  constructor(private readonly endpoint = '/api/reading-jobs', private readonly resultField: 'reading' | 'astrologyReading' = 'reading', private readonly onState?: (state: string) => void) {}
   private jobId: string | null = null;
   private pendingCreation: Promise<Job<unknown>> | null = null;
   private storageKey: string | null = null;
@@ -37,13 +38,14 @@ export class ReadingJobClient {
     await this.canceling.catch(() => this.drainCancellations());
     signal.throwIfAborted();
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(reading)));
+    signal.throwIfAborted();
     const fingerprint = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    const storageKey = `tarot-job:${fingerprint}`;
+    const storageKey = `${this.resultField === 'reading' ? 'tarot' : 'astrology'}-job:${fingerprint}`;
     this.storageKey = storageKey;
     // Only an opaque submission key is stored; never questions, card data, or results.
     let key = sessionStorage.getItem(storageKey);
     if (!key) { key = crypto.randomUUID(); sessionStorage.setItem(storageKey, key); }
-    const create = async () => readApiData<Job<T>>(await apiMutation('/api/reading-jobs', 'POST', { idempotencyKey: key, reading }));
+    const create = async () => readApiData<Job<T>>(await apiMutation(this.endpoint, 'POST', { idempotencyKey: key, reading }));
     this.recoverCreation = create;
     this.pendingCreation = create();
     let job: Job<T>;
@@ -53,9 +55,11 @@ export class ReadingJobClient {
     this.jobId = job.jobId;
     if (signal.aborted) this.jobId = null;
     signal.throwIfAborted();
+    this.onState?.(job.state);
     if (!terminal(job.state)) job = await this.subscribe<T>(job, signal);
     this.jobId = null;
-    if (job.state === 'COMPLETED' && job.reading) return job.reading;
+    const result = job[this.resultField];
+    if (job.state === 'COMPLETED' && result) return result;
     sessionStorage.removeItem(storageKey);
     throw new Error(errorMessage);
   }
@@ -66,11 +70,14 @@ export class ReadingJobClient {
       let checking = false;
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       let heartbeating = false;
-      const stop = () => { source.close(); clearTimeout(timeout); clearInterval(heartbeat); signal.removeEventListener('abort', abort); };
+      let stopped = false;
+      const stop = () => { stopped = true; source.close(); clearTimeout(timeout); clearInterval(heartbeat); signal.removeEventListener('abort', abort); };
       const abort = () => { stop(); reject(new DOMException('Aborted', 'AbortError')); };
       const accept = (job: Job<T>) => {
+        if (stopped || signal.aborted) return;
         if (job.eventId < last) return;
         last = job.eventId;
+        this.onState?.(job.state);
         if (terminal(job.state)) { stop(); resolve(job); }
       };
       const timeout = setTimeout(() => { stop(); reject(new Error('Reading connection expired.')); },
@@ -78,6 +85,7 @@ export class ReadingJobClient {
       signal.addEventListener('abort', abort, { once: true });
       if (signal.aborted) { abort(); return; }
       source.addEventListener('presence', event => {
+        if (stopped || signal.aborted) return;
         try {
           const envelope = JSON.parse((event as MessageEvent).data) as ApiEnvelope<{ subscriberId: string; heartbeatSeconds: number }>;
           const presence = envelope.data;
@@ -85,7 +93,7 @@ export class ReadingJobClient {
               !Number.isFinite(presence.heartbeatSeconds) || presence.heartbeatSeconds <= 0) return;
           clearInterval(heartbeat);
           const beat = async () => {
-            if (heartbeating || signal.aborted) return;
+            if (stopped || heartbeating || signal.aborted) return;
             heartbeating = true;
             try {
               accept(await readApiData<Job<T>>(await apiMutation(`/api/reading-jobs/${initial.jobId}/heartbeat`, 'POST', { subscriberId: presence.subscriberId })));
@@ -105,7 +113,7 @@ export class ReadingJobClient {
       source.onerror = () => {
         clearInterval(heartbeat);
         // EventSource reconnects automatically. A status read also recovers missed terminal notifications.
-        if (checking || signal.aborted) return;
+        if (stopped || checking || signal.aborted) return;
         checking = true;
         void apiFetch(`/api/reading-jobs/${initial.jobId}`, { cache: 'no-store', signal })
           .then(response => readApiData<Job<T>>(response)).then(accept).catch(() => {})

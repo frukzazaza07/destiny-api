@@ -11,7 +11,7 @@ public sealed record CreateReadingJobDto
     [Required] public TarotReadingDto Reading { get; init; }
 }
 public sealed record ReadingJobDto(Guid JobId, string State, long EventId, DateTimeOffset Deadline,
-    TarotReadingResponse? Reading, string? ErrorCode);
+    TarotReadingResponse? Reading, string? ErrorCode, string ReadingType = "TAROT", ThaiAstrologyResponse? AstrologyReading = null);
 public sealed record ReadingPresenceDto(Guid SubscriberId, int HeartbeatSeconds);
 public sealed record ReadingHeartbeatDto([Required] Guid SubscriberId) : IValidatableObject
 {

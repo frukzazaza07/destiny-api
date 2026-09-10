@@ -9,6 +9,8 @@ public sealed class ReadingJobEntity
     public string IdempotencyKey { get; set; } = "";
     public string RequestHash { get; set; } = "";
     public string RequestJson { get; set; } = "";
+    public string ReadingType { get; set; } = "TAROT";
+    public string? PromptJson { get; set; }
     public string ProviderRef { get; set; } = "";
     public string State { get; set; } = "QUEUED";
     public Guid AttemptId { get; set; }
@@ -53,6 +55,7 @@ public static class ReadingJobDataConfiguration
             e.HasIndex(x => new { x.Owner, x.IdempotencyKey }).IsUnique();
             e.HasIndex(x => new { x.State, x.Deadline });
             e.Property(x => x.Owner).HasMaxLength(100);
+            e.Property(x => x.ReadingType).HasMaxLength(30).HasDefaultValue("TAROT");
             e.Property(x => x.IdempotencyKey).HasMaxLength(100);
             e.Property(x => x.Revision).IsConcurrencyToken();
         });

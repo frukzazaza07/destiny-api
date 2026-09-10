@@ -316,8 +316,38 @@ function card() {
   batch(root);return {root,clips:[]};
 }
 
+function astrologyAdvisor() {
+  // Original secular advisor: indigo long jacket, silver hair and a brass notebook.
+  // Vertex colors allow a distinct character within the existing 60-draw-call budget.
+  const parts=group(null,'Astrology_parts');
+  lathe(parts,[[.34,0],[.3,.5],[.24,1],[.32,1.3],[.13,1.48]],midnight,[0,.15,0],16);
+  ellipsoid(parts,[.21,.26,.19],skin,[0,1.9,0]);
+  ellipsoid(parts,[.22,.13,.2],cream,[0,2.07,-.025]);
+  for(const side of [-1,1]) {
+    rod(parts,[side*.27,1.45,0],[side*.38,.9,.06],.085,midnight,.1);
+    ellipsoid(parts,[.085,.1,.08],skin,[side*.38,.86,.06]);
+    ellipsoid(parts,[.12,.09,.2],dark,[side*.16,.09,.08]);
+    ellipsoid(parts,[.025,.018,.015],dark,[side*.075,1.94,.18]);
+  }
+  box(parts,[.2,.3,.05],brass,[.35,.84,.13],.01);
+  parts.updateMatrixWorld(true);
+  const geometries=[];
+  parts.traverse(o=>{if(!o.isMesh)return;
+    const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();
+    g.applyMatrix4(o.matrixWorld);g.deleteAttribute('uv');
+    const colors=[];for(let i=0;i<g.attributes.position.count;i++)colors.push(...o.material.color.toArray());
+    g.setAttribute('color',new T.Float32BufferAttribute(colors,3));geometries.push(g);
+  });
+  const root=group(null,'Astrology_advisor');
+  const figure=new T.Mesh(mergeVertices(mergeGeometries(geometries)),new T.MeshStandardMaterial({vertexColors:true,roughness:.85}));
+  figure.name='Astrology_figure';root.add(figure);
+  const clips=['idle','greeting','listening','result'].map((name,index)=>new T.AnimationClip(name,2,[
+    new T.QuaternionKeyframeTrack('Astrology_figure.quaternion',[0,1,2],[0,index===0?0:.025,0].flatMap(x=>new T.Quaternion().setFromEuler(new T.Euler(x,0,0)).toArray()))
+  ]));
+  return {root,clips};
+}
 const register=[];
-for(const [filename,make] of [['shop',environment],['advisor',()=>character(true)],['visitor',()=>character(false)],['tarot-back',card]]) {
+for(const [filename,make] of [['shop',environment],['advisor',()=>character(true)],['visitor',()=>character(false)],['tarot-back',card],['astrology-advisor',astrologyAdvisor]]) {
   const {root,clips}=make();
   root.userData={source:'scripts/build-shop-models.mjs',provenance:'Original geometry authored for this repository',revision:1};
   const data=await new GLTFExporter().parseAsync(root,{binary:true,animations:clips,onlyVisible:true});

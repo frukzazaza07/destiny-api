@@ -1,3 +1,4 @@
+# Start docker-compose.infra.yml first (see INFRASTRUCTURE.md).
 # Opt-in rollout: docker compose -f docker-compose.yml -f docker-compose.jobs.yml up -d --build
 # Required values are supplied by deployment configuration, never embedded in messages.
 services:
@@ -15,23 +16,6 @@ services:
       LLM__Tiers__2__Workers__0__ApiKey: ""
       # Queued requests are the only interactive DEEP path during this rollout.
       StartupCacheWarmup__Enabled: "false"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-  rabbitmq:
-    image: rabbitmq:4.1-alpine
-    restart: unless-stopped
-    networks: [ backend ]
-    environment:
-      RABBITMQ_DEFAULT_USER: tarot
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?required}
-    volumes:
-      - rabbitmq_jobs:/var/lib/rabbitmq
-    healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
   worker:
     build:
       context: .
@@ -50,9 +34,5 @@ services:
       PROVIDER_IDEMPOTENCY_HEADER: ${PROVIDER_IDEMPOTENCY_HEADER:-}
       PREFETCH: "4"
     depends_on:
-      rabbitmq:
-        condition: service_healthy
       api:
         condition: service_healthy
-volumes:
-  rabbitmq_jobs:

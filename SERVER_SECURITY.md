@@ -161,7 +161,7 @@ All other inbound ports:
 
 Nginx is the ONLY container that should publish public ports.
 
-docker-compose.yml:
+docker-compose.infra.yml (Nginx/PostgreSQL/Redis/RabbitMQ) and docker-compose.yml (application services); see [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the shared networks:
 
 services:
 

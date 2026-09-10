@@ -25,6 +25,7 @@ let initialBytes = 0;
 let totalBytes = 0;
 const errors = [];
 const required = {
+  "astrology-advisor.glb": ["idle", "greeting", "listening", "result"],
   "shop.glb": [],
   "advisor.glb": ["idle", "greeting", "seated", "listening", "shuffling", "dealing", "reveal", "result"],
   "visitor.glb": ["idle", "walk"],
@@ -82,9 +83,9 @@ try {
 } catch (error) { errors.push(`Cannot read model manifest: ${error.message}`); }
 // Walking renders all characters and three animated deck packets. Consultation
 // hides the visitor and renders at most twelve card boxes plus four controls.
-const walkingAssets = ["shop.glb", "advisor.glb", "visitor.glb"].map(name => inspected.get(name));
+const walkingAssets = ["shop.glb", "advisor.glb", "visitor.glb", "astrology-advisor.glb"].map(name => inspected.get(name));
 const walking = walkingAssets.reduce((sum, asset) => ({ triangles: sum.triangles + (asset?.triangles ?? 0), drawCalls: sum.drawCalls + (asset?.drawCalls ?? 0) }), { triangles: 36, drawCalls: 3 });
-const consultationAssets = ["shop.glb", "advisor.glb"].map(name => inspected.get(name));
+const consultationAssets = ["shop.glb", "advisor.glb", "astrology-advisor.glb"].map(name => inspected.get(name));
 const consultation = consultationAssets.reduce((sum, asset) => ({ triangles: sum.triangles + (asset?.triangles ?? 0), drawCalls: sum.drawCalls + (asset?.drawCalls ?? 0) }), { triangles: 12 * 12 + 4 * 2, drawCalls: 12 + 4 });
 const modelTotal = { triangles: Math.max(walking.triangles, consultation.triangles), drawCalls: Math.max(walking.drawCalls, consultation.drawCalls) };
 if (modelTotal.triangles > 80_000 || modelTotal.drawCalls > 60) errors.push(`Base scene exceeds 80,000 triangles / 60 draw calls: ${JSON.stringify(modelTotal)}`);

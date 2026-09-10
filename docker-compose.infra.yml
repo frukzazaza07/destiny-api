@@ -1,0 +1,85 @@
+# Run with an explicit project name: docker compose -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
+# See INFRASTRUCTURE.md for first-time setup and migration from the combined stack.
+services:
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - edge
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--spider", "--header=Host: dooduang.cc", "http://127.0.0.1:8080/nginx-health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tarot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tarot-development-only}
+      POSTGRES_DB: ${POSTGRES_DB:-tarot_destiny}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: [ "redis-server", "--appendonly", "yes", "--save", "60", "1" ]
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.1-alpine
+    hostname: ${RABBITMQ_HOSTNAME:-rabbitmq}
+    restart: unless-stopped
+    networks: [ backend ]
+    environment:
+      RABBITMQ_DEFAULT_USER: tarot
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?required}
+    volumes:
+      - rabbitmq_jobs:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+networks:
+  edge:
+    name: ${APP_EDGE_NETWORK:-tarot-destiny_edge}
+  backend:
+    name: ${APP_BACKEND_NETWORK:-tarot-destiny_backend}
+    internal: true
+
+volumes:
+  postgres-data:
+    name: ${POSTGRES_VOLUME_NAME:-tarot-destiny_postgres-data}
+  redis-data:
+    name: ${REDIS_VOLUME_NAME:-tarot-destiny_redis-data}
+  rabbitmq_jobs:
+    name: ${RABBITMQ_VOLUME_NAME:-tarot-destiny_rabbitmq_jobs}

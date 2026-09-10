@@ -62,6 +62,29 @@ public sealed class ReadingJobTests
         return JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = JsonSerializer.Serialize(content, ReadingJobService.Json) } } } });
     }
     [TestMethod]
+    [DataRow(false)] [DataRow(true)]
+    public async Task AstrologyUsesDurableOutboxAndSettlesCredit(bool canceled)
+    {
+        var input = new CreateThaiAstrologyJobDto { IdempotencyKey = Guid.NewGuid().ToString(),
+            Reading = new() { BirthDate = "1995-04-13", BirthTime = "00:00", Question = "Should I change jobs?", Locale = "en" } };
+        var job = await jobs.CreateAstrology(input, user, Cookie, default);
+        Assert.AreEqual(job.JobId, (await jobs.CreateAstrology(input, user, Cookie, default)).JobId);
+        var work = await Work();
+        var claim = await jobs.Claim(job.JobId, work.AttemptId, false, default);
+        Assert.AreEqual("EXECUTE", claim.Decision);
+        Assert.IsNotNull((await db.Set<ReadingJobEntity>().AsNoTracking().SingleAsync()).PromptJson);
+        var sections = new { overview = "Consider your priorities.", analysis = "Chart calculations are unavailable.", directAnswer = "Compare the roles before deciding.", timing = (string?)null,
+            timingExplanation = "No reliable timing can be determined.", advice = "Ask about responsibilities.", dataLimitations = "Birthplace is missing and chart calculations are unavailable." };
+        var body = JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = JsonSerializer.Serialize(sections) } } } });
+        if (canceled) await jobs.Cancel(job.JobId, Owner, default);
+        Assert.AreEqual(!canceled, await jobs.Result(Result(work, body), default));
+        var final = await jobs.Get(job.JobId, Owner, default);
+        Assert.AreEqual(canceled ? "CANCELED" : "COMPLETED", final.State);
+        Assert.AreEqual(!canceled, final.AstrologyReading is not null);
+        var credit = await db.RewardedDeepCredits.AsNoTracking().SingleAsync();
+        Assert.AreEqual(!canceled, credit.ConsumedAt is not null); Assert.IsNull(credit.ReservationId);
+    }
+    [TestMethod]
     public async Task SubmissionIsIdempotentAndOwnerScoped()
     {
         var input = Input();

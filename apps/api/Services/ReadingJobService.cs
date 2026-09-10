@@ -47,17 +47,33 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         return result;
     }
 
-    public Task<ReadingJobDto> Create(CreateReadingJobDto input, ClaimsPrincipal user, string? cookie, CancellationToken ct) => Mutate(async () =>
+    public Task<ReadingJobDto> Create(CreateReadingJobDto input, ClaimsPrincipal user, string? cookie, CancellationToken ct) =>
+        CreateCore(input.IdempotencyKey, input.Reading, null, user, cookie, ct);
+
+    public Task<ReadingJobDto> CreateAstrology(CreateThaiAstrologyJobDto input, ClaimsPrincipal user, string? cookie, CancellationToken ct)
+    {
+        // Also validate at the business boundary, before any transaction or credit reservation.
+        if (input.Reading is null) throw new ReadingJobException(400, "INVALID_ASTROLOGY_INPUT");
+        var context = new System.ComponentModel.DataAnnotations.ValidationContext(input.Reading);
+        context.InitializeServiceProvider(type => type == typeof(TimeProvider) ? clock : null);
+        if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(input, new(input), [], true) ||
+            !System.ComponentModel.DataAnnotations.Validator.TryValidateObject(input.Reading, context, [], true))
+            throw new ReadingJobException(400, "INVALID_ASTROLOGY_INPUT");
+        return CreateCore(input.IdempotencyKey, null, input.Reading.Normalize(), user, cookie, ct);
+    }
+
+    private Task<ReadingJobDto> CreateCore(string key, TarotReadingDto? tarot, ThaiAstrologyReadingDto? astrology,
+        ClaimsPrincipal user, string? cookie, CancellationToken ct) => Mutate(async () =>
     {
         var owner = Owner(user, cookie) ?? throw new ReadingJobException(403, "DEEP_ACCESS_REQUIRED");
-        if (input.Reading.ReadingMode != ReadingMode.DEEP) throw new ReadingJobException(400, "DEEP_REQUIRED");
-        if (input.Reading.Question is not null && !settings.AllowCloudForRequestsWithRawQuestion)
+        if (tarot is not null && tarot.ReadingMode != ReadingMode.DEEP) throw new ReadingJobException(400, "DEEP_REQUIRED");
+        if ((astrology is not null || tarot?.Question is not null) && !settings.AllowCloudForRequestsWithRawQuestion)
             throw new ReadingJobException(403, "CLOUD_QUESTION_POLICY_DISABLED");
-        if (input.Reading.ModelTier is not null && input.Reading.ModelTier != "CLOUD")
+        if (tarot?.ModelTier is not null && tarot.ModelTier != "CLOUD")
             throw new ReadingJobException(400, "MODEL_TIER_UNAVAILABLE");
-        var requestJson = JsonSerializer.Serialize(input.Reading, Json);
+        var requestJson = astrology is not null ? JsonSerializer.Serialize(astrology, Json) : JsonSerializer.Serialize(tarot, Json);
         var hash = Hash(requestJson);
-        var existing = await db.Set<ReadingJobEntity>().SingleOrDefaultAsync(x => x.Owner == owner && x.IdempotencyKey == input.IdempotencyKey, ct);
+        var existing = await db.Set<ReadingJobEntity>().SingleOrDefaultAsync(x => x.Owner == owner && x.IdempotencyKey == key, ct);
         if (existing is not null)
         {
             if (existing.RequestHash != hash) throw new ReadingJobException(409, "IDEMPOTENCY_CONFLICT");
@@ -73,7 +89,9 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         if (!access.Evaluate(user).Entitled)
             reservation = await rewards.ReserveCreditAsync(user, cookie, ct) ?? throw new ReadingJobException(403, "DEEP_ACCESS_REQUIRED");
         var job = new ReadingJobEntity {
-            Id = Guid.NewGuid(), Owner = owner, IdempotencyKey = input.IdempotencyKey, RequestHash = hash,
+            Id = Guid.NewGuid(), Owner = owner, IdempotencyKey = key, RequestHash = hash,
+            ReadingType = astrology is null ? "TAROT" : "THAI_ASTROLOGY",
+            PromptJson = astrology is null ? null : ThaiAstrologyPromptBuilder.Build(astrology, settings.MaxOutputTokens),
             RequestJson = requestJson, ProviderRef = settings.ProviderRef, AttemptId = Guid.NewGuid(),
             CreatedAt = now, UpdatedAt = now, Deadline = now.AddSeconds(settings.DeadlineSeconds),
             PresenceUntil = now.AddSeconds(settings.ReconnectGraceSeconds),
@@ -86,12 +104,12 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
             credit.ReservationExpiresAt = DateTimeOffset.MaxValue;
         }
         db.Add(job);
-        if (promptCopy is not null)
+        if (promptCopy is not null && tarot is not null)
         {
             var variant = llmOptions is null ? PromptVariantSelection.Control :
-                new InferenceRouter(llmOptions).Resolve(input.Reading with { ModelTier = null }, Classification).PromptVariant;
-            promptCopy.Snapshot(job.Id, owner, ReadingPromptBuilder.Build(input.Reading,
-                engine.Build(input.Reading, Classification), variant), false);
+                new InferenceRouter(llmOptions).Resolve(tarot with { ModelTier = null }, Classification).PromptVariant;
+            promptCopy.Snapshot(job.Id, owner, ReadingPromptBuilder.Build(tarot,
+                engine.Build(tarot, Classification), variant), false);
         }
         Enqueue(job, "REQUEST", "tarot.requests.v1");
         return ToDto(job);
@@ -148,6 +166,15 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         if (job.State != "QUEUED") return new WorkerClaimDto("WAIT");
         if (await db.Set<ReadingJobEntity>().AnyAsync(x => x.ErrorCode == "RATE_LIMITED" && x.UpdatedAt > now.AddSeconds(-30), ct))
             return new WorkerClaimDto("WAIT");
+        JsonElement prompt;
+        if (job.ReadingType == "THAI_ASTROLOGY")
+        {
+            if (!settings.AllowCloudForRequestsWithRawQuestion)
+            { await Finish(job, "FAILED", "CLOUD_QUESTION_POLICY_DISABLED", ct); return new WorkerClaimDto("SKIP"); }
+            prompt = JsonSerializer.Deserialize<JsonElement>(job.PromptJson ?? throw new InvalidOperationException());
+        }
+        else
+        {
         var request = JsonSerializer.Deserialize<TarotReadingDto>(job.RequestJson, Json)!;
         if (request.Question is not null && !settings.AllowCloudForRequestsWithRawQuestion)
         { await Finish(job, "FAILED", "CLOUD_QUESTION_POLICY_DISABLED", ct); return new WorkerClaimDto("SKIP"); }
@@ -155,11 +182,12 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         var savedPrompt = await db.Set<PromptReadingEntity>().SingleOrDefaultAsync(x => x.Id == job.Id, ct);
         var snapshot = savedPrompt is not null && promptCopy is not null ? promptCopy.ReadSnapshot(savedPrompt)
             : ReadingPromptBuilder.Build(request, payload, PromptVariantSelection.Control);
-        var prompt = JsonSerializer.SerializeToElement(new {
+        prompt = JsonSerializer.SerializeToElement(new {
             max_tokens = settings.MaxOutputTokens, temperature = 0.3,
             response_format = LlmClient.BuildReadingResponseFormat(payload),
             messages = snapshot.Messages
         }, Json);
+        }
         // UTF-8 bytes upper-bound input tokens, so this conservative reservation cannot overspend the budget.
         var tokens = Encoding.UTF8.GetByteCount(prompt.GetRawText()) + settings.MaxOutputTokens;
         var recent = await db.Set<ProviderAdmissionEntity>().Where(x => x.CreatedAt > now.AddMinutes(-1)).ToListAsync(ct);
@@ -199,6 +227,13 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         try
         {
             if (result.Body is null || result.Body.Length > 262144) throw new InvalidOperationException();
+            if (job.ReadingType == "THAI_ASTROLOGY")
+            {
+                var astrology = JsonSerializer.Deserialize<ThaiAstrologyReadingDto>(job.RequestJson, Json)!;
+                job.ResultJson = JsonSerializer.Serialize(ThaiAstrologyPromptBuilder.Parse(result.Body, astrology), Json);
+            }
+            else
+            {
             var request = JsonSerializer.Deserialize<TarotReadingDto>(job.RequestJson, Json)!;
             var payload = engine.Build(request, Classification);
             QueuedOutputSchema.Validate(result.Body, payload);
@@ -208,6 +243,7 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
             if (savedPrompt is not null) savedPrompt.Completed = true;
             job.ResultJson = JsonSerializer.Serialize(response with { CacheStatus = CacheStatus.SKIPPED,
                 PromptReadingId = savedPrompt?.Id }, Json);
+            }
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or NullReferenceException or IndexOutOfRangeException)
         { await Finish(job, "FAILED", "INVALID_OUTPUT", ct); return true; }
@@ -243,6 +279,7 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         }
         job.State = state; job.ErrorCode = error; job.UpdatedAt = clock.GetUtcNow(); job.Revision++;
         job.RequestJson = ""; // Raw questions are needed only during execution; retain the hash for idempotency.
+        job.PromptJson = null;
         if (state != "COMPLETED") Enqueue(job, "CANCEL", "tarot.cancellations.v1");
     }
     private void Enqueue(ReadingJobEntity job, string kind, string queue) => db.Add(new ReadingOutboxEntity {
@@ -253,5 +290,6 @@ public sealed class ReadingJobService(TarotDbContext db, IRewardedDeepService re
         await db.Set<ReadingJobEntity>().SingleOrDefaultAsync(x => x.Id == id && x.Owner == owner, ct)
         ?? throw new ReadingJobException(404, "JOB_NOT_FOUND");
     private static ReadingJobDto ToDto(ReadingJobEntity job) => new(job.Id, job.State, job.Revision, job.Deadline,
-        job.ResultJson is null ? null : JsonSerializer.Deserialize<TarotReadingResponse>(job.ResultJson, Json), job.ErrorCode);
+        job.ResultJson is null || job.ReadingType != "TAROT" ? null : JsonSerializer.Deserialize<TarotReadingResponse>(job.ResultJson, Json),
+        job.ErrorCode, job.ReadingType, job.ResultJson is null || job.ReadingType != "THAI_ASTROLOGY" ? null : JsonSerializer.Deserialize<ThaiAstrologyResponse>(job.ResultJson, Json));
 }

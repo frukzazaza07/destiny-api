@@ -37,7 +37,7 @@ const server=createServer(async(request,response)=>{
   else if(request.url==='/utils/BufferGeometryUtils.js')path='node_modules/three/examples/jsm/utils/BufferGeometryUtils.js';
   else if(request.url==='/utils/SkeletonUtils.js')path='node_modules/three/examples/jsm/utils/SkeletonUtils.js';
   else if(/^\/vendor\/three[\w.]*\.js$/.test(request.url))path='node_modules/three/build/'+request.url.split('/').pop();
-  else if(/^\/models\/(shop|advisor|visitor|tarot-back)\.glb$/.test(request.url))path='public/models/destiny-shop/initial/'+request.url.split('/').pop();
+  else if(/^\/models\/(shop|advisor|visitor|tarot-back|astrology-advisor)\.glb$/.test(request.url))path='public/models/destiny-shop/initial/'+request.url.split('/').pop();
   else {response.writeHead(404).end();return;}
   response.setHeader('Content-Type',path.endsWith('.js')?'text/javascript':'model/gltf-binary');response.end(await readFile(root+path));
  }catch(error){response.writeHead(500).end(String(error));}
@@ -50,7 +50,7 @@ try{
  page.on('response',response=>{if(response.status()>=400)console.error(response.status(),response.url());});
  await page.goto('http://127.0.0.1:'+server.address().port);
  await page.waitForFunction(()=>Boolean(window.showModel));
- for(const [name,clip]of [['shop'],...['idle','seated','greeting','listening','shuffling','dealing','reveal','result'].map(clip=>['advisor',clip]),['visitor','idle'],['visitor','walk'],['tarot-back']]){
+ for(const [name,clip]of [['shop'],...['idle','seated','greeting','listening','shuffling','dealing','reveal','result'].map(clip=>['advisor',clip]),...['idle','greeting','listening','result'].map(clip=>['astrology-advisor',clip]),['visitor','idle'],['visitor','walk'],['tarot-back']]){
   console.log(await page.evaluate(([name,clip])=>window.showModel(name,clip),[name,clip]));
   await page.screenshot({path:output+'/'+name+(clip?'-'+clip:'')+'.png'});
  }

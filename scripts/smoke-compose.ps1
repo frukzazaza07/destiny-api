@@ -3,6 +3,7 @@ param(
     [string]$ApiBaseUrl = "http://127.0.0.1:5000",
     [string]$AdminKey = "tarot-development-admin",
     [string]$ComposeProject = $env:COMPOSE_PROJECT_NAME,
+    [string]$InfraComposeProject = "tarot-destiny-infra",
     [string]$PostgresUser = $env:POSTGRES_USER,
     [string]$PostgresDatabase = $env:POSTGRES_DB
 )
@@ -24,6 +25,10 @@ function Invoke-Compose {
     & docker @composeArgs @args
 }
 
+function Invoke-InfraCompose {
+    & docker compose --project-name $InfraComposeProject -f docker-compose.infra.yml @args
+}
+
 $web = Invoke-WebRequest -UseBasicParsing -Uri $WebBaseUrl
 Assert-True ($web.StatusCode -eq 200) "Web application did not return HTTP 200."
 
@@ -37,12 +42,14 @@ Assert-True ($swagger.StatusCode -eq 200) "Swagger UI did not return HTTP 200."
 
 Invoke-Compose exec -T classifier python scripts/health_check.py
 if ($LASTEXITCODE -ne 0) { throw "Classifier health check failed." }
-Invoke-Compose exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+Invoke-InfraCompose exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL health check failed." }
-$redis = Invoke-Compose exec -T redis redis-cli ping
+$redis = Invoke-InfraCompose exec -T redis redis-cli ping
 Assert-True ($LASTEXITCODE -eq 0 -and $redis.Trim() -eq "PONG") "Redis health check failed."
+Invoke-InfraCompose exec -T rabbitmq rabbitmq-diagnostics -q ping
+if ($LASTEXITCODE -ne 0) { throw "RabbitMQ health check failed." }
 
-$migrationTableCount = Invoke-Compose exec -T postgres psql -U $PostgresUser -d $PostgresDatabase -tAc "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename = '__EFMigrationsHistory';"
+$migrationTableCount = Invoke-InfraCompose exec -T postgres psql -U $PostgresUser -d $PostgresDatabase -tAc "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename = '__EFMigrationsHistory';"
 Assert-True ($LASTEXITCODE -eq 0 -and [int]$migrationTableCount.Trim() -eq 1) "Database migrations were not applied."
 
 $readingBody = @{
@@ -72,6 +79,7 @@ Assert-True ($analytics.success -and $analytics.data.runtime.cacheHits -ge 1) "C
     Classifier = "ok"
     PostgreSQL = "ok"
     Redis = "ok"
+    RabbitMQ = "ok"
     FirstReading = $first.data.cacheStatus
     SecondReading = $second.data.cacheStatus
     CacheKey = $second.data.cacheKey

@@ -7,12 +7,12 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import type { ReadingPhase, ShuffleVisualStep } from "./use-tarot-reading-flow";
 
 const MODEL_ROOT = "/models/destiny-shop/initial/";
-const MODEL_URLS = ["shop", "advisor", "visitor", "tarot-back"].map(name => `${MODEL_ROOT}${name}.glb`);
+const MODEL_URLS = ["shop", "advisor", "visitor", "tarot-back", "astrology-advisor"].map(name => `${MODEL_ROOT}${name}.glb`);
 
 // Called only in the explicitly entered, dynamically imported Canvas. Nothing is preloaded on the landing page.
 export function useShopModels() {
-  const [shop, advisor, visitor, card] = useLoader(GLTFLoader, MODEL_URLS);
-  return { shop, advisor, visitor, card };
+  const [shop, advisor, visitor, card, astrology] = useLoader(GLTFLoader, MODEL_URLS);
+  return { shop, advisor, visitor, card, astrology };
 }
 
 function prepareScene(asset: GLTF) {

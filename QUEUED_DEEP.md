@@ -80,16 +80,19 @@ If a worker crashes after the provider may have completed but before confirming 
 
 ## Configuration and deployment
 
-The overlay requires externally supplied `RABBITMQ_PASSWORD`, `READING_WORKER_KEY` (at least 32 characters), `TAROT_LLM_CLOUD_ENDPOINT`, `TAROT_LLM_CLOUD_API_KEY`, and `TAROT_LLM_CLOUD_MODEL`. Set `ALLOW_CLOUD_RAW_QUESTION=true` only for the approved cloud deployment. Do not inspect or copy secret-bearing environment files. These are configuration keys, not example credentials for production.
+The overlay requires externally supplied `RABBITMQ_PASSWORD`, `READING_WORKER_KEY` (at least 32 characters), `TAROT_LLM_CLOUD_ENDPOINT`, `TAROT_LLM_CLOUD_API_KEY`, and `TAROT_LLM_CLOUD_MODEL`. RabbitMQ now runs in `docker-compose.infra.yml`, which also requires the same `RABBITMQ_PASSWORD`; the overlay only configures the API and worker. Set `ALLOW_CLOUD_RAW_QUESTION=true` only for the approved cloud deployment. Do not inspect or copy secret-bearing environment files. These are configuration keys, not example credentials for production.
 
 `infra/reading-jobs.env.example` contains nonproduction examples for configuration validation. It keeps cloud-question forwarding disabled.
 
 ```sh
+docker compose -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
 docker compose -f docker-compose.yml -f docker-compose.jobs.yml build api worker
 docker compose -f docker-compose.yml -f docker-compose.jobs.yml run --rm migrate
 docker compose -f docker-compose.yml -f docker-compose.jobs.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.jobs.yml up -d --scale worker=2 worker
 ```
+
+Infrastructure runs in its own project and must be healthy before migrations or app startup. Both projects share the same explicitly named edge/backend networks; see [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for existing-volume migration and lifecycle commands.
 
 RabbitMQ has a persistent volume and no host port. Workers have no host port; they join private backend and outbound-provider networks. Existing shared API data-protection storage is required across replicas for account/CSRF cookies. TLS terminates at the existing trusted edge. Worker shutdown stops admission, aborts active transport, allows up to 10 seconds for result delivery, and requeues work it has not claimed. Docker allows 20 seconds to stop it.
 

@@ -29,6 +29,16 @@ public sealed class ReadingJobsController(IOptions<ReadingJobOptions> options) :
         var result = await Jobs.Create(request, User, RewardedDeepCookie.Read(Request), ct);
         return Accepted($"/api/reading-jobs/{result.JobId}", new ResponseDto<ReadingJobDto, object>(result, null));
     }
+    /// <summary>Create a personalized Thai astrology job using DEEP access. Birth data follows the raw-question cloud policy.
+    /// Status, SSE, heartbeat and cancellation use the same owner-scoped reading-jobs routes.</summary>
+    [HttpPost("thai-astrology")]
+    [ApiAntiforgery]
+    [ProducesResponseType(typeof(ResponseDto<ReadingJobDto, object>), 202)]
+    public async Task<IActionResult> CreateAstrology(CreateThaiAstrologyJobDto request, CancellationToken ct)
+    {
+        var result = await Jobs.CreateAstrology(request, User, RewardedDeepCookie.Read(Request), ct);
+        return Accepted($"/api/reading-jobs/{result.JobId}", new ResponseDto<ReadingJobDto, object>(result, null));
+    }
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ResponseDto<ReadingJobDto, object>), 200)]
     public async Task<IActionResult> Status(Guid id, CancellationToken ct)

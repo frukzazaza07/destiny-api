@@ -17,7 +17,8 @@ The shared finished-answer cache is safe at the intent boundary: cache-eligible 
 - `contracts/classifier/v1` - shared, versioned classifier protobuf contract.
 - `apps/web` - Next.js reading experience with English/Thai, topic or question modes, `DESTINY_3`, and `DAILY_1`.
 - `tests/TarotDestiny.Api.Tests` - discoverable MSTest acceptance suite run by `dotnet test`.
-- `docker-compose.yml` - complete containerized platform with health-gated startup, migrations, private service networks, persistent data, and optional GPU profiles.
+- `docker-compose.infra.yml` - independently managed Nginx, PostgreSQL, Redis, RabbitMQ, persistent data storage, and shared edge/backend networks.
+- `docker-compose.yml` - application services with health-gated startup, migrations, external shared networks, persistent data, and optional GPU profiles.
 
 ## Local Run
 
@@ -25,18 +26,13 @@ Copy the development environment template, review its development-only credentia
 
 ```powershell
 Copy-Item .env.example .env
+docker compose -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
 docker compose up --build
 ```
 
-Compose builds the Next.js standalone image, ASP.NET API, and classifier; starts PostgreSQL and Redis; applies committed EF migrations in the one-shot `migrate` service; and starts the API and web only after their required dependencies are healthy. Open:
+Start infrastructure first and wait for PostgreSQL, Redis, and RabbitMQ to be healthy. The app builds Next.js, ASP.NET, and the classifier; applies committed EF migrations in the one-shot `migrate` service; and starts API/web after their app dependencies are ready. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for resource names and the one-time migration of an existing combined deployment.
 
-- Web: `http://localhost:3000`
-- Operator UI: `http://localhost:3000/admin`
-- API health: `http://localhost:5000/health`
-- Swagger UI (Development only): `http://localhost:5000/swagger`
-- OpenAPI JSON (Development only): `http://localhost:5000/swagger/v1/swagger.json`
-
-Only the web and API development ports are published. They bind to `BIND_ADDRESS` (`0.0.0.0` by default for LAN development); restrict this to `127.0.0.1` when LAN access is not required. PostgreSQL, Redis, classifier gRPC, and inference endpoints remain on Docker networks. Named volumes retain database data, Redis data, classifier artifacts, and downloaded Ollama models.
+The checked-in Nginx configuration serves `https://dooduang.cc` and requires its TLS certificates. It publishes ports 80/443; API port 5000 and web port 3000 are container-only. Development Swagger is available at `/swagger/index.html` and `/swagger/v1/swagger.json` through an operator-accessible API endpoint, while public Nginx hides it. Redis retains its configured host binding. Named volumes retain database data, Redis data, classifier artifacts, and downloaded Ollama models.
 
 Start local Ollama with NVIDIA GPU access and pull the models listed in `OLLAMA_MODELS`:
 
@@ -181,8 +177,10 @@ npm.cmd run build
 npm.cmd audit --audit-level=high
 cd ../..
 docker compose config --quiet
+docker compose -p tarot-destiny-infra -f docker-compose.infra.yml config --quiet
 docker compose --profile local-gpu config --quiet
 docker compose --profile external-gpu config --quiet
+docker compose -p tarot-destiny-infra -f docker-compose.infra.yml up --detach --wait
 docker compose up --detach --build --wait
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-compose.ps1 -AdminKey "<ADMIN_KEY from .env>"
 ```

@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Prompts/thai-astrology-v1.txt" />
     <Protobuf Include="..\..\contracts\classifier\v1\classifier.proto" GrpcServices="Client" Link="Protos\classifier.proto" />
   </ItemGroup>
 

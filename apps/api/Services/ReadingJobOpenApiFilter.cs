@@ -7,6 +7,13 @@ public sealed class ReadingJobOpenApiFilter : IOperationFilter
 {
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
+        if (context.ApiDescription.RelativePath == "api/reading-jobs/thai-astrology")
+            operation.Description = "Create a personalized THAI_ASTROLOGY reading with DEEP entitlement or one earned credit. " +
+                "Requires CSRF and the account or reward-session cookie. Validates before reserving access. " +
+                "Birth information and question require AllowCloudForRequestsWithRawQuestion. " +
+                "Returns 202; recover, stream, heartbeat and cancel using the common reading-jobs routes. " +
+                "COMPLETED returns astrologyReading with reading=null. Timing is null in NO_CHART_V1. " +
+                "Idempotency keys are shared across reading types per owner; different input with the same key returns 409.";
         if (context.ApiDescription.RelativePath != "api/reading-jobs/{id}/events") return;
         operation.Description = "SSE event `status`: data is a ResponseDto<ReadingJobDto, object> JSON envelope. " +
             "The initial `presence` event contains a ResponseDto<ReadingPresenceDto, object> with subscriberId and heartbeatSeconds. " +
@@ -27,5 +34,22 @@ public sealed class ReadingJobOpenApiFilter : IOperationFilter
             response.Value.Content.Clear();
             response.Value.Content["application/json"] = media;
         }
+    }
+}
+
+public sealed class ThaiAstrologySchemaFilter : ISchemaFilter
+{
+    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    {
+        if (context.Type != typeof(TarotDestiny.Api.DTOs.ThaiAstrologyReadingDto)) return;
+        schema.Properties["birthDate"].Format = "date";
+        schema.Properties["birthDate"].Description = "Required real, non-future Gregorian YYYY-MM-DD date; never a UTC timestamp or Buddhist Era year.";
+        schema.Properties["birthTime"].Nullable = true;
+        schema.Properties["birthTime"].Description = "Optional local 24-hour HH:mm. 00:00 means midnight. Null, omitted or blank means unknown; no timezone is assumed.";
+        schema.Properties["birthPlace"].Nullable = true;
+        schema.Properties["birthPlace"].Description = "Optional location text, trimmed, at most 200 characters. Blank means missing. No geocoding or timezone resolution.";
+        schema.Properties["question"].Description = "Required nonblank customer question, trimmed, at most 2000 characters.";
+        schema.Properties["locale"].Nullable = true;
+        schema.Properties["locale"].Description = "Explicit th or en controls all prose. Omitted/null resolves by dominant Thai/Latin script in the question; ties/other scripts default to th.";
     }
 }

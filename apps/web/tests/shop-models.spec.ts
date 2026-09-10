@@ -32,7 +32,7 @@ test("GLB assets load only after entry, render all zones, and survive quality ch
   expect(loaded).toEqual([]);
   await page.getByRole("button", { name: "Enter 3D shop" }).click();
   await expect(page.getByText("Preparing the reception, gallery, and Tarot room…")).toBeHidden({ timeout: 15_000 });
-  expect(loaded.sort()).toEqual(["advisor.glb", "shop.glb", "tarot-back.glb", "visitor.glb"]);
+  expect(loaded.sort()).toEqual(["advisor.glb", "astrology-advisor.glb", "shop.glb", "tarot-back.glb", "visitor.glb"]);
   await page.screenshot({ path: ".tmp/model-previews/in-shop-entrance.png" });
   await page.keyboard.down("w");
   try { await expect(page.locator(".shop-zone-indicator")).toContainText("Service gallery", { timeout: 10_000 }); }

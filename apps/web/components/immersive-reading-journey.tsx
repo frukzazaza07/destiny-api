@@ -2,7 +2,9 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Locale } from "../lib/i18n";
+import { astrologyCopy, type Locale } from "../lib/i18n";
+import AstrologyConsultation from "./astrology-consultation";
+import { useAstrologyReadingFlow } from "./use-astrology-reading-flow";
 import ReadingClient from "./reading-client";
 import type { Movement, QualityProfile, ShopInteraction, ShopZone } from "./destiny-shop-canvas";
 import { useTarotReadingFlow } from "./use-tarot-reading-flow";
@@ -115,6 +117,15 @@ const flowMessages = {
 
 export default function ImmersiveReadingJourney({ initialLocale }: { initialLocale: Locale }) {
   const text = shopCopy[initialLocale];
+  const astrologyText = astrologyCopy[initialLocale];
+  const astrology = useAstrologyReadingFlow(initialLocale);
+  const [astrologyOpen, setAstrologyOpen] = useState(false);
+  const astrologyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const openFromLink = () => { if (window.location.hash === "#astrology-consultation") setAstrologyOpen(true); };
+    openFromLink(); window.addEventListener("hashchange", openFromLink);
+    return () => window.removeEventListener("hashchange", openFromLink);
+  }, []);
   const shopRef = useRef<HTMLElement | null>(null);
   const enterButtonRef = useRef<HTMLButtonElement | null>(null);
   const consultationRef = useRef<HTMLDivElement | null>(null);
@@ -178,7 +189,17 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
 
   const handleInteract = useCallback(() => {
     if (interaction === "TAROT") openConsultation();
+    if (interaction === "THAI_ASTROLOGY") {
+      setAstrologyOpen(true); setMovement({ x: 0, z: 0 }); setJoystick({ x: 0, z: 0 });
+      window.requestAnimationFrame(() => astrologyRef.current?.focus());
+    }
   }, [interaction, openConsultation]);
+
+  const meetAstrology = () => {
+    setConsultationOpen(false); setAstrologyOpen(true);
+    setMovement({ x: 0, z: 0 }); setJoystick({ x: 0, z: 0 });
+    window.requestAnimationFrame(() => { astrologyRef.current?.focus(); astrologyRef.current?.scrollIntoView({ block: "start" }); });
+  };
 
   const handleContextLost = useCallback(() => {
     setFallbackMessage(text.contextLost);
@@ -199,7 +220,8 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
     });
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (consultationOpen) closeConsultation();
+      if (astrologyOpen) setAstrologyOpen(false);
+      else if (consultationOpen) closeConsultation();
       else exitShop();
     };
     window.addEventListener("keydown", onEscape);
@@ -213,7 +235,7 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
         else element.setAttribute("aria-hidden", aria);
       });
     };
-  }, [closeConsultation, consultationOpen, entered, exitShop]);
+  }, [closeConsultation, consultationOpen, astrologyOpen, entered, exitShop]);
 
   const status = interaction === "TAROT" ? text.tarotReady : interaction === "RECEPTION" ? text.reception : interaction === "COMING_SOON" ? text.future : text.approach[zone];
   const combinedMovement = { x: movement.x + joystick.x, z: movement.z + joystick.z };
@@ -230,6 +252,7 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
               {webGlStatus === "checking" ? text.loading : text.enter}
             </button>}
             <button type="button" className="shop-text-action" onClick={openConsultation}>{text.direct}</button>
+            <button type="button" className="shop-text-action" onClick={meetAstrology}>{astrologyText.meet}</button>
           </div>
         </div>}
 
@@ -241,6 +264,9 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
               reduceMotion={reduceMotion}
               quality={quality}
               consultationOpen={consultationOpen}
+              astrologyOpen={astrologyOpen}
+              astrologyState={astrology.state}
+              onAstrology={meetAstrology}
               flow={flow}
               onInteractionChange={setInteraction}
               onZoneChange={setZone}
@@ -258,10 +284,11 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
               <label className="shop-quality">{text.quality}<select value={quality} onChange={(event) => setQuality(event.target.value as QualityProfile)}><option value="LOW">{text.qualityLow}</option><option value="STANDARD">{text.qualityStandard}</option><option value="HIGH">{text.qualityHigh}</option></select></label>
               <button type="button" className="shop-icon-action" aria-pressed={audioEnabled} onClick={toggleAudio}>{audioEnabled ? "🔊" : "🔇"}<span>{audioEnabled ? text.audioOn : text.audioMuted}</span></button>
               <button type="button" className="shop-secondary" onClick={exitShop}>{text.exit}</button>
+              <button type="button" className="shop-secondary" onClick={meetAstrology}>{astrologyText.meet}</button>
             </header>
-            {!consultationOpen && <div className="service-legend" aria-label={initialLocale === "th" ? "สถานะบริการ" : "Service status"}><span className="is-open">{text.tarotOpen}</span><span>{text.comingSoon}</span><span>{text.comingSoon}</span></div>}
-            {!consultationOpen && <div className="destiny-shop-hud">
-              <p className={interaction === "TAROT" ? "is-ready" : ""} role="status" aria-live="polite">{status}</p>
+            {!consultationOpen && !astrologyOpen && <div className="service-legend" aria-label={initialLocale === "th" ? "สถานะบริการ" : "Service status"}><span className="is-open">{text.tarotOpen}</span><span className="is-open">{astrologyText.open}</span><span>{text.comingSoon}</span></div>}
+            {!consultationOpen && !astrologyOpen && <div className="destiny-shop-hud">
+              <p className={interaction === "TAROT" ? "is-ready" : ""} role="status" aria-live="polite">{interaction === "THAI_ASTROLOGY" ? astrologyText.meet : status}</p>
               <small>{text.walkHint}</small>
               <TouchJoystick value={joystick} onChange={setJoystick} />
               <div className="shop-keypad" role="group" aria-label={text.movement}>
@@ -270,7 +297,7 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
                 <HoldButton label={text.backward} symbol="S" onStart={() => setMovement({ x: 0, z: 1 })} onStop={() => setMovement({ x: 0, z: 0 })} />
                 <HoldButton label={text.right} symbol="D" onStart={() => setMovement({ x: 1, z: 0 })} onStop={() => setMovement({ x: 0, z: 0 })} />
               </div>
-              <button type="button" className={`shop-consult-action ${interaction === "TAROT" ? "is-ready" : ""}`} onClick={handleInteract} disabled={interaction !== "TAROT"}>{interaction === "TAROT" ? text.consult : text.interact}</button>
+              <button type="button" className={`shop-consult-action ${interaction === "TAROT" ? "is-ready" : ""}`} onClick={handleInteract} disabled={interaction !== "TAROT" && interaction !== "THAI_ASTROLOGY"}>{interaction === "TAROT" ? text.consult : text.interact}</button>
             </div>}
           </>}
         </div>
@@ -283,6 +310,10 @@ export default function ImmersiveReadingJourney({ initialLocale }: { initialLoca
           <div id="tarot-consultation" ref={consultationRef} className="inworld-reading-scroll" tabIndex={-1}><ReadingClient initialLocale={initialLocale} flow={flow} immersive /></div>
         </div>}
       </section>
+        <div id="astrology-consultation" ref={astrologyRef} tabIndex={-1} hidden={!astrologyOpen} className={entered ? "astrology-panel" : "astrology-accessible"}>
+          <button className="shop-secondary" type="button" onClick={() => { setAstrologyOpen(false); shopRef.current?.focus(); }}>{text.closeReading}</button>
+          {astrologyOpen && <AstrologyConsultation locale={initialLocale} flow={astrology} />}
+        </div>
 
       {!entered && <div id="tarot-consultation" ref={consultationRef} className="tarot-consultation-anchor" tabIndex={-1}>
         <div className="consultation-bridge"><div><p className="eyebrow">{text.consultationEyebrow}</p><p>{text.consultationIntro}</p></div></div>

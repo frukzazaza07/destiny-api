@@ -41,6 +41,18 @@
       "triangles": 86,
       "drawCalls": 3,
       "animations": []
+    },
+    {
+      "file": "astrology-advisor.glb",
+      "bytes": 46180,
+      "triangles": 1660,
+      "drawCalls": 1,
+      "animations": [
+        "idle",
+        "greeting",
+        "listening",
+        "result"
+      ]
     }
   ]
 }

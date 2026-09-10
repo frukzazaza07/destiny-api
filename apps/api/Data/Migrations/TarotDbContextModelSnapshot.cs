@@ -463,9 +463,19 @@ namespace TarotDestiny.Api.Data.Migrations
                     b.Property<DateTimeOffset>("PresenceUntil")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PromptJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("ProviderRef")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("ReadingType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("TAROT");
 
                     b.Property<string>("RequestHash")
                         .IsRequired()

@@ -71,63 +71,6 @@ x-api-environment: &api-environment
   LLM__Tiers__2__Workers__0__Enabled: ${ENABLE_CLOUD_FALLBACK:-false}
 
 services:
-  nginx:
-    image: nginx:1.28-alpine
-    ports:
-      - "80:8080"
-      - "443:8443"
-    volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_healthy
-    networks:
-      - edge
-    healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/nginx-health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tarot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tarot-development-only}
-      POSTGRES_DB: ${POSTGRES_DB:-tarot_destiny}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - backend
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command: [ "redis-server", "--appendonly", "yes", "--save", "60", "1" ]
-    volumes:
-      - redis-data:/data
-    networks:
-      - backend
-    ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:${REDIS_PORT:-6379}:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    restart: unless-stopped
-
   classifier:
     build:
       context: .
@@ -155,9 +98,6 @@ services:
       dockerfile: apps/api/Dockerfile
     command: [ "--migrate" ]
     environment: *api-environment
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - backend
     restart: "no"
@@ -174,10 +114,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       classifier:
         condition: service_healthy
     networks:
@@ -279,13 +215,14 @@ services:
 
 networks:
   edge:
+    external: true
+    name: ${APP_EDGE_NETWORK:-tarot-destiny_edge}
   egress:
   backend:
-    internal: true
+    external: true
+    name: ${APP_BACKEND_NETWORK:-tarot-destiny_backend}
 
 volumes:
-  postgres-data:
-  redis-data:
   classifier-artifacts-v3:
   ollama-models:
   account-dataprotection:

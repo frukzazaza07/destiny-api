@@ -57,7 +57,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(o => o.OperationFilter<ReadingJobOpenApiFilter>());
+builder.Services.AddSwaggerGen(o => { o.OperationFilter<ReadingJobOpenApiFilter>(); o.SchemaFilter<ThaiAstrologySchemaFilter>(); });
 var dataProtection = builder.Services.AddDataProtection().SetApplicationName("TarotDestiny");
 var dataProtectionKeysPath = builder.Configuration["Account:DataProtectionKeysPath"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))

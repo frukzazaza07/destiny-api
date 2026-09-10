@@ -19,7 +19,7 @@ import TarotTable from "./tarot-table";
 
 export type Movement = { x: number; z: number };
 export type ShopZone = "ENTRANCE" | "GALLERY" | "TAROT_ROOM";
-export type ShopInteraction = "RECEPTION" | "TAROT" | "COMING_SOON" | null;
+export type ShopInteraction = "RECEPTION" | "TAROT" | "THAI_ASTROLOGY" | "COMING_SOON" | null;
 export type QualityProfile = "LOW" | "STANDARD" | "HIGH";
 
 type DestinyShopCanvasProps = {
@@ -28,6 +28,9 @@ type DestinyShopCanvasProps = {
   reduceMotion: boolean;
   quality: QualityProfile;
   consultationOpen: boolean;
+  astrologyOpen: boolean;
+  astrologyState: string;
+  onAstrology: () => void;
   flow: TarotReadingFlow;
   onInteractionChange: (interaction: ShopInteraction) => void;
   onZoneChange: (zone: ShopZone) => void;
@@ -92,7 +95,7 @@ class SceneFailureBoundary extends Component<{ children: ReactNode; onFailure: (
 }
 
 function ShopScene({
-  movement, reduceMotion, quality, consultationOpen, flow, locale,
+  movement, reduceMotion, quality, consultationOpen, astrologyOpen, astrologyState, onAstrology, flow, locale,
   onInteractionChange, onZoneChange, onInteract, onReady,
 }: DestinyShopCanvasProps) {
   const { phase, shuffleVisualStep } = flow;
@@ -138,7 +141,7 @@ function ShopScene({
   useEffect(() => {
     const movementKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"]);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (consultationOpen) return;
+      if (consultationOpen || astrologyOpen) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       if (movementKeys.has(event.code)) {
         event.preventDefault();
@@ -156,22 +159,22 @@ function ShopScene({
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", clearKeys);
     };
-  }, [onInteract, onInteractionChange, consultationOpen]);
+  }, [onInteract, onInteractionChange, consultationOpen, astrologyOpen]);
 
   useEffect(() => {
     pressedKeys.current.clear();
     pointer.current.active = false;
-  }, [consultationOpen]);
+  }, [consultationOpen, astrologyOpen]);
 
   useEffect(() => {
     const canvas = gl.domElement;
     const pointerDown = (event: PointerEvent) => {
-      if (event.pointerType === "touch" || consultationOpen) return;
+      if (event.pointerType === "touch" || consultationOpen || astrologyOpen) return;
       pointer.current = { active: true, x: event.clientX, y: event.clientY };
       canvas.setPointerCapture(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
-      if (!pointer.current.active || consultationOpen) return;
+      if (!pointer.current.active || consultationOpen || astrologyOpen) return;
       const dx = event.clientX - pointer.current.x;
       const dy = event.clientY - pointer.current.y;
       pointer.current.x = event.clientX;
@@ -190,7 +193,7 @@ function ShopScene({
       canvas.removeEventListener("pointerup", pointerUp);
       canvas.removeEventListener("pointercancel", pointerUp);
     };
-  }, [consultationOpen, gl]);
+  }, [consultationOpen, astrologyOpen, gl]);
 
   useFrame((_, rawDelta) => {
     const body = playerBody.current;
@@ -199,9 +202,9 @@ function ShopScene({
     if (!body || !collider || !controller) return;
     const delta = Math.min(rawDelta, 0.05);
     const keys = pressedKeys.current;
-    let inputX = consultationOpen ? 0 : movement.x;
-    let inputZ = consultationOpen ? 0 : movement.z;
-    if (!consultationOpen) {
+    let inputX = consultationOpen || astrologyOpen ? 0 : movement.x;
+    let inputZ = consultationOpen || astrologyOpen ? 0 : movement.z;
+    if (!consultationOpen && !astrologyOpen) {
       if (keys.has("ArrowLeft") || keys.has("KeyA")) inputX -= 1;
       if (keys.has("ArrowRight") || keys.has("KeyD")) inputX += 1;
       if (keys.has("ArrowUp") || keys.has("KeyW")) inputZ -= 1;
@@ -237,9 +240,14 @@ function ShopScene({
     const receptionDistance = Math.hypot(translation.x + 4.9, translation.z - 7.8);
     const tarotDistance = Math.hypot(translation.x, translation.z + 7.1);
     const futureDistance = Math.min(Math.hypot(translation.x - 7.2, translation.z - 0.4), Math.hypot(translation.x + 7.2, translation.z - 0.4));
-    const interaction: ShopInteraction = tarotDistance < 3.25 ? "TAROT" : receptionDistance < 2.7 ? "RECEPTION" : futureDistance < 2.6 ? "COMING_SOON" : null;
+    const astrologyDistance = Math.hypot(translation.x + 5.5, translation.z + 1.8);
+    const interaction: ShopInteraction = tarotDistance < 3.25 ? "TAROT" : astrologyDistance < 3 ? "THAI_ASTROLOGY" : receptionDistance < 2.7 ? "RECEPTION" : futureDistance < 2.6 ? "COMING_SOON" : null;
     if (interaction !== currentInteraction.current) { currentInteraction.current = interaction; onInteractionChange(interaction); }
 
+    if (astrologyOpen) {
+      cameraIdeal.set(-3, 4.2, 3.5); cameraTarget.set(-5.5, 1.4, -1.8);
+      camera.position.lerp(cameraIdeal, reduceMotion ? 1 : 1 - Math.exp(-delta * 7)); camera.lookAt(cameraTarget); return;
+    }
     if (consultationOpen) {
       cameraTarget.set(0, 1.35, -10.05);
       const framing = Math.max(1, .95 / (size.width / size.height));
@@ -275,6 +283,9 @@ function ShopScene({
       <hemisphereLight args={["#c5dad6", "#594137", 1.5]} />
       <directionalLight castShadow={quality !== "LOW"} color="#ffdfaa" intensity={2.15} position={[7, 13, 8]} shadow-mapSize-width={shadowMapSize} shadow-mapSize-height={shadowMapSize} shadow-camera-far={42} shadow-camera-left={-17} shadow-camera-right={17} shadow-camera-top={16} shadow-camera-bottom={-16} />
       <ShopModel asset={models.shop} />
+      <group position={[-5.5, 0, -1.8]} rotation={[0, .45, 0]} onClick={event => { event.stopPropagation(); onAstrology(); }}>
+        <CharacterModel asset={models.astrology} animation={astrologyState === "COMPLETED" ? "result" : ["RUNNING", "QUEUED", "SUBMITTING"].includes(astrologyState) ? "listening" : astrologyOpen ? "greeting" : "idle"} reduceMotion={reduceMotion} />
+      </group>
       <ShopColliders />
       {quality !== "LOW" && <pointLight position={[0, 3.8, -10]} color="#ffcf8a" intensity={12} distance={9} />}
       <group position={[0, -.24, -11.75]}>

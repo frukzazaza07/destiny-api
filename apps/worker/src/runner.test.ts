@@ -9,11 +9,14 @@ const work = { version: 1, kind: 'REQUEST', jobId: 'a176d43f-7bc8-42dd-845e-fc7e
   attemptId: '20b93baf-9105-4032-830d-464541e39119', correlationId: 'a176d43f-7bc8-42dd-845e-fc7e223518a5',
   deadline: new Date(Date.now() + 60000).toISOString(), providerRef: 'cloud-default' };
 
-async function scenario(decision: string, failFirstPublish: boolean, slowProvider = false) {
+async function scenario(decision: string, failFirstPublish: boolean, slowProvider = false, requestPayload: Record<string, unknown> = { messages: [] }) {
   let calls = 0; let acknowledged = 0; let publishes = 0; let result: { errorCode: string | null } | undefined;
   const server = createServer((_request, response) => {
     calls++;
     assert.equal(_request.headers['idempotency-key'], work.attemptId);
+    let requestBody = '';
+    _request.on('data', chunk => { requestBody += chunk.toString(); });
+    _request.on('end', () => assert.deepEqual(JSON.parse(requestBody), { ...requestPayload, model: 'test-model' }));
     if (!slowProvider) { response.writeHead(200); response.end('{}'); }
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -23,7 +26,7 @@ async function scenario(decision: string, failFirstPublish: boolean, slowProvide
     PROVIDER_KEY: 'example-only', PROVIDER_MODEL: 'test-model', PROVIDER_IDEMPOTENCY_HEADER: 'Idempotency-Key', NODE_ENV: 'test' });
   const runner = new Runner();
   Object.assign(runner, { control: async (_work: unknown, action: string) => ({
-    decision: action === 'renew' ? 'SKIP' : decision, providerRef: 'cloud-default', model: 'test-model', request: { messages: [] },
+    decision: action === 'renew' ? 'SKIP' : decision, providerRef: 'cloud-default', model: 'test-model', request: requestPayload,
   }) });
   const channel = { on: () => {}, removeListener: () => {}, ack: () => { acknowledged++; }, nack: () => { throw new Error('Unexpected nack'); },
     sendToQueue: (_queue: string, body: Buffer, _options: unknown, callback: (error: Error | null) => void) => {
@@ -37,6 +40,15 @@ async function scenario(decision: string, failFirstPublish: boolean, slowProvide
 test('a canceled queued request is acknowledged without a provider call', async () => {
   const outcome = await scenario('SKIP', false);
   assert.equal(outcome.calls, 0); assert.equal(outcome.acknowledged, 1); assert.equal(outcome.publishes, 0);
+});
+
+test('astrology authorized claim transports separate instructions and exact optional birth data', async () => {
+  const outcome = await scenario('EXECUTE', false, false, {
+    messages: [{ role: 'system', content: 'Trusted English instructions. No chart calculations.' },
+      { role: 'user', content: JSON.stringify({ readingType: 'THAI_ASTROLOGY', birthDate: '1995-04-13', birthTime: '00:00', birthPlace: null, question: 'Should I change jobs?', locale: 'en' }) }],
+    response_format: { type: 'json_schema', json_schema: { name: 'thai_astrology_v1' } },
+  });
+  assert.equal(outcome.calls, 1); assert.equal(outcome.acknowledged, 1);
 });
 test('result confirmation retries never re-enter provider generation', async () => {
   const outcome = await scenario('EXECUTE', true);
