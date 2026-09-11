@@ -42,5 +42,5 @@ jobs:
           script: |
             cd /home/${{ secrets.SERVER_USER }}/apps/dev/destiny-api
             git pull
-            docker compose --env-file .env -f docker-compose.yml -f docker-compose.jobs.yml up -d --force-recreate --build
+            docker compose --env-file .env -p dev-tarot-destiny -f docker-compose.yml -f docker-compose.jobs.yml up -d --force-recreate --build
 
