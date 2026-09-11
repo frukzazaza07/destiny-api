@@ -22,8 +22,8 @@ jobs:
           script: |
             cd /home/${{ secrets.SERVER_USER }}/apps/prod/destiny-api
             git pull
-            docker compose --env-file .env -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
             docker compose --env-file .env -f docker-compose.yml -f docker-compose.jobs.yml up -d --force-recreate --build
+        # docker compose --env-file .env -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
 
   deploy-dev:
     if: github.ref == 'refs/heads/dev'
