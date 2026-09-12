@@ -10,7 +10,8 @@ services:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
-      - edge
+      - prod-edge
+      - dev-edge
     healthcheck:
       test: [ "CMD", "wget", "--quiet", "--spider", "--header=Host: dooduang.cc", "http://127.0.0.1:8080/nginx-health" ]
       interval: 10s
@@ -76,8 +77,12 @@ services:
       retries: 12
 
 networks:
-  edge:
-    name: ${APP_EDGE_NETWORK:-tarot-destiny_edge}
+  prod-edge:
+    external: true
+    name: ${APP_PROD_EDGE_NETWORK:-tarot-destiny_prod-edge}
+  dev-edge:
+    external: true
+    name: ${APP_DEV_EDGE_NETWORK:-tarot-destiny_dev-edge}
   backend:
     name: ${APP_BACKEND_NETWORK:-tarot-destiny_backend}
     internal: true
