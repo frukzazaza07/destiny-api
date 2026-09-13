@@ -21,7 +21,8 @@ jobs:
           port: 22 # Change if your server uses a custom SSH port
           script: |
             cd /home/${{ secrets.SERVER_USER }}/apps/prod/destiny-api
-            git pull
+            git switch main
+            git pull origin main
             docker compose --env-file .env -p prod-tarot-destiny -f docker-compose.yml -f docker-compose.jobs.yml up -d --force-recreate --build
         # docker compose --env-file .env -p tarot-destiny-infra -f docker-compose.infra.yml up -d --wait
 
@@ -41,6 +42,7 @@ jobs:
           port: 22 # Change if your server uses a custom SSH port
           script: |
             cd /home/${{ secrets.SERVER_USER }}/apps/dev/destiny-api
-            git pull
+            git switch dev
+            git pull origin dev
             docker compose --env-file .env -p dev-tarot-destiny -f docker-compose.yml -f docker-compose.jobs.yml up -d --force-recreate --build
 
