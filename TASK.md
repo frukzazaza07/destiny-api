@@ -1,5 +1,39 @@
 # TASK.md — Tarot LLM Classification + Finished Answer Cache
 
+# Design Task — Generate a Beautiful Website Favicon
+
+Status: **Implemented and locally verified — 2026-09-13.**
+
+Create a distinctive, polished favicon for the destiny website that matches its existing branding, colors, and Tarot/Thai astrology theme. Favor a simple, recognizable symbol that remains crisp at browser-tab sizes.
+
+- [x] Review the current website branding and icon assets to choose a consistent visual direction.
+- [x] Generate or design the favicon artwork; check legibility at 16x16 and 32x32 pixels and contrast in light and dark browser tabs.
+- [x] Export the required browser favicon formats and an Apple touch icon, retaining an editable or high-resolution source asset.
+- [x] Integrate the assets with the existing Next.js metadata and remove any obsolete default favicon references.
+- [x] Verify icon URLs return successfully and the intended favicon appears on both Thai and English pages, including `/th`, `/th/`, `/en`, and `/en/`.
+
+Implementation and validation: [Website icons](apps/web/ICONS.md). Production build and all eight favicon/locale browser checks passed. Live deployment is pending.
+
+# Bug Task — Thai and English Locale Routes With and Without Trailing Slashes
+
+Status: **Implemented — 2026-09-13; deployment and verification of the updated proxy pending.**
+
+Reported behavior: visiting `https://domain/th` times out, while `https://domain/th/` returns the correct response. The hostname is a placeholder; the deployed host and root cause have not yet been verified.
+
+Scope: explicitly cover `/th`, `/th/`, `/en`, and `/en/`.
+
+- [x] Check `/th`, `/th/`, `/en`, and `/en/` through the deployed reverse proxy and inspect their response status and redirect chain.
+- [x] Investigate locale routing, trailing-slash normalization, and reverse-proxy redirects to identify the cause.
+- [x] Fix routing so `/th` and `/th/` reach the Thai page, and `/en` and `/en/` reach the English page, without a timeout or redirect loop, preserving HTTPS, the public hostname, and query parameters.
+- [x] Add regression coverage for all four routes, including correct locale rendering.
+- [ ] Verify all four routes through the deployment proxy and record the cause, change, and validation results.
+
+Cause confirmed on `https://dooduang.cc`: `/th` and `/en` returned HTTP 308 with `Location` pointing at internal port `8443`; `/th/` and `/en/` returned HTTP 200. Docker maps public port 443 to Nginx port 8443. Added `absolute_redirect off` in `infra/nginx/nginx.conf` so path redirects remain relative for both production and development; explicit HTTP-to-HTTPS redirects remain absolute. See [Nginx documentation](https://nginx.org/en/docs/http/ngx_http_core_module.html#absolute_redirect).
+
+Validation: all four local Playwright route checks passed, as did TypeScript checking and `git diff --check`. The same regression suite against the current live site passed the two slash routes and caught the incorrect redirect origin on both non-slash routes. Nginx runtime validation was unavailable locally because Docker was not running and no native Nginx was installed.
+
+After deploying the updated configuration, validate and reload Nginx using the infrastructure deployment's existing Compose project: `docker compose -f docker-compose.infra.yml exec nginx nginx -t`, then `docker compose -f docker-compose.infra.yml exec nginx nginx -s reload`. From `apps/web`, set `PLAYWRIGHT_BASE_URL` to the deployed HTTPS origin and run `npx playwright test tests/locale-routing.spec.ts` to verify the updated proxy.
+
 # Next Task — Thai Astrology Destiny and Interactive 3D Shaman
 
 Status: **Implemented — 2026-09-10. Local verification complete; PostgreSQL/RabbitMQ integration and live provider quality verification pending.**
