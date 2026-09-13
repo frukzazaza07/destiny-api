@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
+  <title>Tarot Destiny — celestial star</title>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#101114" stroke="#d5ad61" stroke-width="2"/>
+  <path d="M32 10 C35 24 40 29 52 32 C40 35 35 40 32 54 C29 40 24 35 12 32 C24 29 29 24 32 10Z" fill="#d5ad61"/>
+  <path d="M32 24 L38 32 L32 40 L26 32Z" fill="#101114"/>
+  <circle cx="46" cy="17" r="3" fill="#f4efe7"/>
+  <circle cx="18" cy="47" r="3" fill="#f4efe7"/>
+</svg>
