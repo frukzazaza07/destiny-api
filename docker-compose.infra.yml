@@ -13,7 +13,7 @@ services:
     networks:
       - prod-edge
       - dev-edge
-      - registry-data
+      - proxy-infra
     healthcheck:
       test: [ "CMD", "wget", "--quiet", "--spider", "--header=Host: dooduang.cc", "http://127.0.0.1:8080/nginx-health" ]
       interval: 10s
