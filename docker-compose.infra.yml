@@ -88,6 +88,9 @@ networks:
   backend:
     name: ${APP_BACKEND_NETWORK:-tarot-destiny_backend}
     internal: true
+  proxy-infra:
+    external: true
+    name: ${APP_PROXY_INFRA_NETWORK:-proxy-infra}
 
 volumes:
   postgres-data:
