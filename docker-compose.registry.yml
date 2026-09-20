@@ -1,0 +1,55 @@
+services:
+  registry-auth-init:
+    image: httpd:2.4-alpine
+    container_name: registry-auth-init
+    restart: "no"
+    environment:
+      REGISTRY_USERNAME: ${REGISTRY_USERNAME:?REGISTRY_USERNAME is required}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:?REGISTRY_PASSWORD is required}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        printf '%s\n' "$$REGISTRY_PASSWORD" \
+          | htpasswd -Bni "$$REGISTRY_USERNAME" \
+          > /auth/htpasswd
+
+        chmod 600 /auth/htpasswd
+
+    volumes:
+      - registry-auth:/auth
+
+  registry:
+    image: registry:3.1.1
+    container_name: docker-registry
+    restart: unless-stopped
+
+    depends_on:
+      registry-auth-init:
+        condition: service_completed_successfully
+        restart: true
+
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+
+    volumes:
+      - registry-data:/var/lib/registry
+      - registry-auth:/auth:ro
+
+    expose:
+      - ${REGISTRY_PORT:-8881}
+
+    networks:
+      - proxy-infra
+
+networks:
+  proxy-infra:
+    name: ${APP_PROXY_INFRA_NETWORK:-proxy-infra}
+
+volumes:
+  registry-data:
+    name: ${REGISTRY_VOLUME_NAME:-proxy-registry-data}
