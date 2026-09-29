@@ -1,0 +1,78 @@
+when:
+  event: push
+  branch: [main, dev]
+
+# We don't use Woodpecker's checked-out source code.
+# Deployment happens through SSH on the VPS.
+skip_clone: true
+
+steps:
+  - name: deploy
+    image: alpine:3.22
+
+    environment:
+      SERVER_HOST:
+        from_secret: server_host
+      SERVER_USER:
+        from_secret: server_user
+      SSH_PRIVATE_KEY:
+        from_secret: ssh_private_key_to_destiny_server
+      SERVER_KNOWN_HOSTS:
+        from_secret: server_known_hosts
+
+    commands:
+      - apk add --no-cache openssh-client
+
+      # SSH setup
+      - mkdir -p ~/.ssh
+      - chmod 700 ~/.ssh
+
+      - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+      - chmod 600 ~/.ssh/id_ed25519
+
+      - printf '%s\n' "$SERVER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - chmod 600 ~/.ssh/known_hosts
+
+      # Resolve deployment environment
+      - |
+        case "$CI_COMMIT_BRANCH" in
+          main)
+            DEPLOY_ENV="prod"
+            DEPLOY_DIR="/home/$SERVER_USER/apps/prod/destiny-api"
+            COMPOSE_PROJECT="prod-tarot-destiny"
+            ;;
+
+          dev)
+            DEPLOY_ENV="dev"
+            DEPLOY_DIR="/home/$SERVER_USER/apps/dev/destiny-api"
+            COMPOSE_PROJECT="dev-tarot-destiny"
+            ;;
+
+          *)
+            echo "Unsupported branch: $CI_COMMIT_BRANCH"
+            exit 1
+            ;;
+        esac
+
+        echo "Deploying $CI_COMMIT_BRANCH -> $DEPLOY_ENV"
+
+        ssh \
+          -o BatchMode=yes \
+          -p 22 \
+          "$SERVER_USER@$SERVER_HOST" "
+            set -eu
+
+            cd '$DEPLOY_DIR'
+
+            git switch '$CI_COMMIT_BRANCH'
+            git pull --ff-only origin '$CI_COMMIT_BRANCH'
+
+            docker compose \
+              --env-file .env \
+              -p '$COMPOSE_PROJECT' \
+              -f docker-compose.yml \
+              -f docker-compose.jobs.yml \
+              up -d \
+              --force-recreate \
+              --build
+          "
