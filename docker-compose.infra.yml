@@ -14,6 +14,10 @@ services:
       - prod-edge
       - dev-edge
       - proxy-infra
+    environment:
+      DESTINY_PROD_HOST: https://${DESTINY_PROD_HOST:?Set DESTINY_PROD_HOST in .env}
+      DESTINY_DEV_HOST: https://${DESTINY_DEV_HOST:?Set DESTINY_DEV_HOST in .env}
+      CICD_HOST: https://${CICD_HOST:?Set CICD_HOST in .env}
     healthcheck:
       test: [ "CMD", "wget", "--quiet", "--spider", "--header=Host: dooduang.cc", "http://127.0.0.1:8080/nginx-health" ]
       interval: 10s
